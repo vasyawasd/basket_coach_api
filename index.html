@@ -1,0 +1,2126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOOP PRO AI — Персональный ИИ-Тренер по Баскетболу</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-dark: #07090e;
+            --card-bg: rgba(18, 22, 34, 0.75);
+            --card-border: rgba(255, 107, 0, 0.18);
+            --accent-orange: #ff6b00;
+            --accent-glow: #ff8800;
+            --accent-cyan: #00f0ff;
+            --text-main: #f0f4f8;
+            --text-muted: #8a99ad;
+            --input-bg: rgba(10, 14, 24, 0.85);
+            --radius-lg: 20px;
+            --radius-md: 12px;
+            --font-main: 'Outfit', sans-serif;
+            --font-display: 'Space Grotesk', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(255, 107, 0, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 85% 75%, rgba(0, 240, 255, 0.08) 0%, transparent 45%),
+                linear-gradient(180deg, #07090e 0%, #0c1019 100%);
+            background-attachment: fixed;
+        }
+
+        /* Basketball Lines Graphic Background Overlay */
+        .court-lines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0.04;
+            background-image: 
+                radial-gradient(circle at 50% 50%, transparent 200px, #ffffff 201px, #ffffff 203px, transparent 204px),
+                linear-gradient(to right, transparent 49%, #ffffff 50%, transparent 51%);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px 80px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header / Hero */
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            position: relative;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .auth-bar {
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-auth {
+            padding: 8px 16px;
+            background: rgba(255, 107, 0, 0.12);
+            border: 1px solid rgba(255, 107, 0, 0.3);
+            border-radius: 20px;
+            color: var(--accent-orange);
+            font-family: var(--font-main);
+            font-weight: 600;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .btn-auth:hover {
+            background: rgba(255, 107, 0, 0.25);
+            color: #fff;
+            box-shadow: 0 0 15px rgba(255, 107, 0, 0.3);
+        }
+
+        .user-profile-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 14px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 20px;
+            color: var(--accent-cyan);
+            font-size: 0.9rem;
+        }
+
+        .btn-logout {
+            background: transparent;
+            border: none;
+            color: #ff8888;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-left: 4px;
+            text-decoration: underline;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            background: rgba(255, 107, 0, 0.12);
+            border: 1px solid rgba(255, 107, 0, 0.3);
+            border-radius: 50px;
+            color: var(--accent-orange);
+            font-weight: 600;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            box-shadow: 0 0 20px rgba(255, 107, 0, 0.2);
+        }
+
+        .badge-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-orange);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-orange);
+            animation: pulse 1.5s infinite;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2.5rem, 5vw, 4.2rem);
+            font-weight: 900;
+            line-height: 1.1;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #ffffff 30%, #ff8800 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 16px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.15rem;
+            max-width: 650px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Main Grid Layout */
+        .app-grid {
+            display: grid;
+            grid-template-columns: 440px 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+
+        @media (max-width: 992px) {
+            .app-grid {
+                grid-template-columns: 1fr;
+            }
+            .auth-bar {
+                position: relative;
+                justify-content: center;
+                margin-bottom: 16px;
+            }
+        }
+
+        /* Glassmorphism Cards */
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s ease;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(255, 107, 0, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .card-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent-orange), #ff4500);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            box-shadow: 0 4px 15px rgba(255, 107, 0, 0.4);
+        }
+
+        .card-title {
+            font-family: var(--font-display);
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        /* Form Inputs */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        input[type="number"], input[type="text"], input[type="password"], select {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--input-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-md);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            font-size: 1rem;
+            transition: all 0.25s ease;
+            outline: none;
+        }
+
+        input[type="number"]:focus, input[type="text"]:focus, input[type="password"]:focus, select:focus {
+            border-color: var(--accent-orange);
+            box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.2);
+            background: rgba(14, 20, 34, 0.95);
+        }
+
+        .unit {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            pointer-events: none;
+        }
+
+        /* Position Selection Grid */
+        .position-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+        }
+
+        .pos-btn {
+            padding: 10px 4px;
+            background: var(--input-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .pos-btn:hover {
+            border-color: rgba(255, 107, 0, 0.4);
+            color: var(--text-main);
+        }
+
+        .pos-btn.active {
+            background: linear-gradient(135deg, var(--accent-orange), #e05300);
+            color: #fff;
+            border-color: var(--accent-orange);
+            box-shadow: 0 4px 12px rgba(255, 107, 0, 0.35);
+        }
+
+        /* Days Selector */
+        .days-selector {
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+        }
+
+        .day-pill {
+            flex: 1;
+            padding: 12px 0;
+            background: var(--input-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .day-pill:hover {
+            border-color: rgba(255, 107, 0, 0.4);
+            color: var(--text-main);
+        }
+
+        .day-pill.active {
+            background: rgba(255, 107, 0, 0.15);
+            border-color: var(--accent-orange);
+            color: var(--accent-orange);
+            box-shadow: 0 0 15px rgba(255, 107, 0, 0.2);
+        }
+
+        /* Goal Multi-select pills & Validation */
+        .goals-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .goal-pill {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            background: var(--input-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+            font-size: 0.92rem;
+            color: var(--text-muted);
+        }
+
+        .goal-pill:hover {
+            border-color: rgba(255, 107, 0, 0.4);
+            color: var(--text-main);
+        }
+
+        .goal-pill.active {
+            background: rgba(255, 107, 0, 0.15);
+            border-color: var(--accent-orange);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(255, 107, 0, 0.2);
+        }
+
+        .goal-pill input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent-orange);
+            cursor: pointer;
+        }
+
+        .goal-warning {
+            display: none;
+            background: rgba(255, 77, 77, 0.12);
+            border: 1px solid rgba(255, 77, 77, 0.35);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-top: 10px;
+            color: #ffaaaa;
+            font-size: 0.88rem;
+            line-height: 1.4;
+            animation: fadeInDown 0.3s ease;
+        }
+
+        /* Model Selector Cards */
+        .model-selector-grid {
+            display: grid;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .model-pill {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 14px;
+            background: var(--input-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .model-pill:hover {
+            border-color: rgba(255, 107, 0, 0.4);
+        }
+
+        .model-pill.active {
+            background: rgba(255, 107, 0, 0.15);
+            border-color: var(--accent-orange);
+            box-shadow: 0 0 12px rgba(255, 107, 0, 0.2);
+        }
+
+        .model-pill input[type="radio"] {
+            margin-top: 3px;
+            accent-color: var(--accent-orange);
+            cursor: pointer;
+        }
+
+        .model-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .model-title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model-rec-tag {
+            font-size: 0.72rem;
+            background: rgba(0, 240, 255, 0.15);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .model-desc {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.3;
+        }
+
+        .btn-download-txt {
+            width: 100%;
+            padding: 16px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid rgba(0, 240, 255, 0.35);
+            border-radius: var(--radius-md);
+            color: var(--accent-cyan);
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 24px;
+        }
+
+        .btn-download-txt:hover {
+            background: rgba(0, 240, 255, 0.2);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* History Section Styles */
+        .history-section {
+            margin-top: 40px;
+        }
+
+        .btn-clear-history {
+            background: rgba(255, 77, 77, 0.1);
+            border: 1px solid rgba(255, 77, 77, 0.3);
+            border-radius: 8px;
+            color: #ff8888;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            font-family: var(--font-main);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-clear-history:hover {
+            background: rgba(255, 77, 77, 0.25);
+            border-color: #ff5555;
+            color: #fff;
+        }
+
+        .history-list {
+            display: grid;
+            gap: 14px;
+            margin-top: 10px;
+        }
+
+        .history-item {
+            background: rgba(10, 14, 24, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-md);
+            padding: 18px 22px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            transition: all 0.25s ease;
+        }
+
+        .history-item:hover {
+            border-color: rgba(0, 240, 255, 0.4);
+            background: rgba(14, 20, 34, 0.85);
+            transform: translateY(-2px);
+        }
+
+        .history-info {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .history-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .history-date {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .history-badge {
+            background: rgba(255, 107, 0, 0.12);
+            border: 1px solid rgba(255, 107, 0, 0.3);
+            color: var(--accent-orange);
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 6px;
+        }
+
+        .history-goals {
+            font-size: 0.92rem;
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .history-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-hist-action {
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid transparent;
+        }
+
+        .btn-hist-load {
+            background: rgba(255, 107, 0, 0.15);
+            border-color: rgba(255, 107, 0, 0.35);
+            color: var(--accent-orange);
+        }
+
+        .btn-hist-load:hover {
+            background: rgba(255, 107, 0, 0.3);
+            color: #fff;
+        }
+
+        .btn-hist-dl {
+            background: rgba(0, 240, 255, 0.12);
+            border-color: rgba(0, 240, 255, 0.35);
+            color: var(--accent-cyan);
+        }
+
+        .btn-hist-dl:hover {
+            background: rgba(0, 240, 255, 0.25);
+            color: #fff;
+        }
+
+        .btn-hist-del {
+            background: rgba(255, 77, 77, 0.1);
+            border-color: rgba(255, 77, 77, 0.25);
+            color: #ff8888;
+        }
+
+        .btn-hist-del:hover {
+            background: rgba(255, 77, 77, 0.25);
+            color: #fff;
+        }
+
+        /* Submit Button */
+        .btn-generate {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, var(--accent-orange) 0%, #ff3b00 100%);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #fff;
+            font-family: var(--font-display);
+            font-size: 1.15rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(255, 107, 0, 0.4);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(255, 107, 0, 0.6);
+            background: linear-gradient(135deg, #ff7a1a 0%, #ff4d1a 100%);
+        }
+
+        .btn-generate:active {
+            transform: translateY(0);
+        }
+
+        .btn-generate:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Results / Output Area */
+        .placeholder-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .placeholder-icon {
+            font-size: 3.5rem;
+            margin-bottom: 16px;
+            opacity: 0.4;
+        }
+
+        .loader-container {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .ball-spinner {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #ff8800, #d64500);
+            margin: 0 auto 24px;
+            position: relative;
+            box-shadow: 0 0 30px rgba(255, 107, 0, 0.6);
+            animation: bounce 0.8s infinite alternate cubic-bezier(0.5, 0.05, 1, 0.5);
+        }
+
+        .ball-spinner::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        /* Schedule Render Styling */
+        .results-container {
+            display: none;
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        .source-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid rgba(0, 240, 255, 0.25);
+            border-radius: 6px;
+            color: var(--accent-cyan);
+            font-size: 0.8rem;
+            font-family: var(--font-display);
+            margin-bottom: 20px;
+        }
+
+        .summary-card {
+            background: linear-gradient(135deg, rgba(255, 107, 0, 0.12), rgba(255, 136, 0, 0.05));
+            border: 1px solid rgba(255, 107, 0, 0.3);
+            border-radius: var(--radius-md);
+            padding: 18px 22px;
+            margin-bottom: 20px;
+        }
+
+        .summary-title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            color: var(--accent-orange);
+            font-size: 1rem;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .summary-text {
+            font-size: 0.95rem;
+            color: var(--text-main);
+            line-height: 1.5;
+        }
+
+        .safety-card {
+            background: rgba(255, 77, 77, 0.08);
+            border: 1px solid rgba(255, 77, 77, 0.25);
+            border-radius: var(--radius-md);
+            padding: 18px 22px;
+            margin-bottom: 20px;
+        }
+
+        .safety-title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            color: #ff6666;
+            font-size: 1rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .safety-list {
+            list-style: none;
+            display: grid;
+            gap: 6px;
+        }
+
+        .safety-item {
+            font-size: 0.9rem;
+            color: #ffcccc;
+            position: relative;
+            padding-left: 18px;
+        }
+
+        .safety-item::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: #ff6666;
+            font-weight: bold;
+        }
+
+        .schedule-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .day-card {
+            background: rgba(10, 14, 24, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            transition: all 0.25s ease;
+        }
+
+        .day-card:hover {
+            border-color: rgba(255, 107, 0, 0.3);
+            background: rgba(14, 18, 30, 0.8);
+        }
+
+        .day-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .day-name {
+            font-family: var(--font-display);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-orange);
+        }
+
+        .day-focus {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        .exercise-list {
+            list-style: none;
+            display: grid;
+            gap: 12px;
+        }
+
+        .exercise-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-orange);
+        }
+
+        .ex-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .ex-meta {
+            display: flex;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .ex-pill {
+            background: rgba(255, 107, 0, 0.1);
+            color: #ffaa66;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        /* Auth Modal Overlay */
+        .auth-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(5, 7, 12, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInDown 0.25s ease;
+        }
+
+        .auth-modal {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 36px;
+            width: 100%;
+            max-width: 440px;
+            position: relative;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 16px;
+            right: 18px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.6rem;
+            cursor: pointer;
+            transition: color 0.2s ease;
+        }
+
+        .modal-close:hover {
+            color: #fff;
+        }
+
+        .auth-tabs {
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 12px;
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 1.05rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            border-radius: 8px;
+        }
+
+        .auth-tab.active {
+            background: rgba(255, 107, 0, 0.15);
+            color: var(--accent-orange);
+        }
+
+        .auth-error-msg {
+            display: none;
+            background: rgba(255, 77, 77, 0.12);
+            border: 1px solid rgba(255, 77, 77, 0.3);
+            color: #ffaaaa;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-top: 12px;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-30px); }
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="court-lines"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="auth-bar">
+                <button type="button" class="btn-auth" id="openAuthModalBtn">🔑 Вход / Регистрация</button>
+                <div class="user-profile-badge" id="userProfileBadge" style="display:none;">
+                    <span>👤 <strong id="userNameDisplay">Пользователь</strong></span>
+                    <button type="button" class="btn-logout" id="logoutBtn">Выйти</button>
+                </div>
+            </div>
+
+            <div class="badge">
+                <span class="badge-dot"></span>
+                RAG + AI Basketball Coach Engine
+            </div>
+            <h1>HOOP PRO AI GENERATOR</h1>
+            <p class="subtitle">Интеллектуальная система построения баскетбольных тренировок на основе методических материалов и передовых нейросетей ИИ</p>
+        </header>
+
+        <!-- Main Content Layout -->
+        <div class="app-grid">
+            
+            <!-- Left Column: Input Form -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <div class="card-icon">🏀</div>
+                    <div class="card-title">Параметры Игрока</div>
+                </div>
+
+                <form id="coachForm">
+                    <div class="form-group">
+                        <div class="input-row">
+                            <div>
+                                <label for="height">Рост</label>
+                                <div class="input-wrapper">
+                                    <input type="number" id="height" value="190" min="50" max="300" required>
+                                    <span class="unit">см</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="weight">Вес</label>
+                                <div class="input-wrapper">
+                                    <input type="number" id="weight" value="85" min="30" max="300" step="0.5" required>
+                                    <span class="unit">кг</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Позиция на площадке</label>
+                        <div class="position-grid">
+                            <button type="button" class="pos-btn active" data-pos="PG">PG</button>
+                            <button type="button" class="pos-btn" data-pos="SG">SG</button>
+                            <button type="button" class="pos-btn" data-pos="SF">SF</button>
+                            <button type="button" class="pos-btn" data-pos="PF">PF</button>
+                            <button type="button" class="pos-btn" data-pos="C">C</button>
+                        </div>
+                        <input type="hidden" id="position" value="PG">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Цели тренировок (выберите до 3-х)</label>
+                        <div class="goals-grid" id="goalsGrid">
+                            <label class="goal-pill active" data-key="jump" data-label="🚀 Прыжок и вертикальный взрыв (Vertical Jump)">
+                                <input type="checkbox" value="Прыжок и вертикальный взрыв (Vertical Jump)" checked>
+                                <span>🚀 Прыжок и вертикальный взрыв</span>
+                            </label>
+                            <label class="goal-pill" data-key="dribble" data-label="⚡ Дриблинг и контроль мяча (Dribble & Ball Handling)">
+                                <input type="checkbox" value="Дриблинг и контроль мяча (Dribble & Ball Handling)">
+                                <span>⚡ Дриблинг и контроль мяча</span>
+                            </label>
+                            <label class="goal-pill" data-key="shooting" data-label="🎯 Бросковая выносливость и стабильность (Shooting)">
+                                <input type="checkbox" value="Бросковая выносливость и стабильность (Shooting)">
+                                <span>🎯 Бросковая выносливость</span>
+                            </label>
+                            <label class="goal-pill" data-key="strength" data-label="💪 Силовая подготовка и масса (Strength)">
+                                <input type="checkbox" value="Силовая подготовка и масса (Strength)">
+                                <span>💪 Силовая подготовка и масса</span>
+                            </label>
+                            <label class="goal-pill" data-key="defense" data-label="🛡️ Скорость и защита (Agility & Defense)">
+                                <input type="checkbox" value="Скорость и защита (Agility & Defense)">
+                                <span>🛡️ Скорость и защита</span>
+                            </label>
+                            <label class="goal-pill" data-key="recovery" data-label="🧘 Восстановление и мобильность (Mobility & Recovery)">
+                                <input type="checkbox" value="Восстановление и мобильность (Mobility & Recovery)">
+                                <span>🧘 Восстановление и мобильность</span>
+                            </label>
+                        </div>
+                        <div class="goal-warning" id="goalWarning"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Дней тренировок в неделю</label>
+                        <div class="days-selector">
+                            <div class="day-pill" data-days="1">1</div>
+                            <div class="day-pill" data-days="2">2</div>
+                            <div class="day-pill active" data-days="3">3</div>
+                            <div class="day-pill" data-days="4">4</div>
+                            <div class="day-pill" data-days="5">5</div>
+                            <div class="day-pill" data-days="6">6</div>
+                        </div>
+                        <input type="hidden" id="days_per_week" value="3">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="injuries">Травмы / Ограничения</label>
+                        <input type="text" id="injuries" placeholder="Например: Боль в колене, нет" value="Нет">
+                    </div>
+
+                    <!-- AI Model Selector with usage hints -->
+                    <div class="form-group">
+                        <label>Модель ИИ</label>
+                        <div class="model-selector-grid">
+                            <label class="model-pill active" data-model="claude-sonnet-5">
+                                <input type="radio" name="ai_model" value="claude-sonnet-5" checked>
+                                <div class="model-info">
+                                    <div class="model-title">🚀 Claude Sonnet 5 <span class="model-rec-tag">Рекомендуется</span></div>
+                                    <div class="model-desc">Быстрая генерация (15–20 сек) и высокое качество тренировочного плана</div>
+                                </div>
+                            </label>
+                            <label class="model-pill" data-model="claude-opus-5">
+                                <input type="radio" name="ai_model" value="claude-opus-5">
+                                <div class="model-info">
+                                    <div class="model-title">🧠 Claude Opus 5</div>
+                                    <div class="model-desc">Максимальная глубина: тщательный анализ базы знаний и сложных травм (1–2 мин)</div>
+                                </div>
+                            </label>
+                            <label class="model-pill" data-model="claude-haiku-4.5">
+                                <input type="radio" name="ai_model" value="claude-haiku-4.5">
+                                <div class="model-info">
+                                    <div class="model-title">⚡ Claude Haiku 4.5</div>
+                                    <div class="model-desc">Экспресс: мгновенная генерация за 3–5 секунд для быстрого обзора</div>
+                                </div>
+                            </label>
+                            <label class="model-pill" data-model="gpt-5.5">
+                                <input type="radio" name="ai_model" value="gpt-5.5">
+                                <div class="model-info">
+                                    <div class="model-title">🤖 GPT-5.5</div>
+                                    <div class="model-desc">Альтернативный ИИ: высокая точность вариативности упражнений</div>
+                                </div>
+                            </label>
+                        </div>
+                        <input type="hidden" id="selected_model" value="claude-sonnet-5">
+                    </div>
+
+                    <button type="submit" class="btn-generate" id="submitBtn">
+                        <span>⚡ Сгенерировать Программу</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Right Column: Results Output -->
+            <div class="glass-card" id="outputCard">
+                <div class="card-header">
+                    <div class="card-icon">📋</div>
+                    <div class="card-title">Персональное Расписание</div>
+                </div>
+
+                <!-- Initial State -->
+                <div class="placeholder-state" id="placeholderState">
+                    <div class="placeholder-icon">🏃‍♂️</div>
+                    <h3>Заполните форму слева</h3>
+                    <p>ИИ проанализирует ваши параметры и методическую базу знаний для составления оптимального плана.</p>
+                </div>
+
+                <!-- Loading State -->
+                <div class="loader-container" id="loaderState">
+                    <div class="ball-spinner"></div>
+                    <h3 id="loaderTitle">Анализируем базу знаний и генерируем план...</h3>
+                    <p id="loaderSub" style="color: var(--text-muted); margin-top: 8px;">Нейросеть составляет персональную программу тренировок</p>
+                </div>
+
+                <!-- Results Display -->
+                <div class="results-container" id="resultsState">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                        <div class="source-badge" id="sourceBadge" style="margin-bottom:0;">
+                            <span>✨ Движок:</span>
+                            <strong id="sourceName">Claude Sonnet 5</strong>
+                        </div>
+                    </div>
+
+                    <div class="schedule-grid" id="scheduleGrid"></div>
+
+                    <button type="button" class="btn-download-txt" id="downloadTxtBtn">
+                        <span>📄 Скачать план в .TXT</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- History Section Card -->
+        <div class="glass-card history-section" id="historyCard">
+            <div class="card-header" style="justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="card-icon" style="background: linear-gradient(135deg, var(--accent-cyan), #0088ff);">📜</div>
+                    <div class="card-title">История Сгенерированных Программ (<span id="historyCount">0</span>)</div>
+                </div>
+                <button type="button" class="btn-clear-history" id="clearHistoryBtn" style="display:none;">
+                    🗑️ Очистить историю
+                </button>
+            </div>
+
+            <div class="history-list" id="historyList">
+                <div class="placeholder-state" style="padding: 30px 20px;">
+                    <p style="color: var(--text-muted);">История пока пуста. Сгенерируйте свою первую программу тренировок!</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Auth Modal -->
+    <div class="auth-modal-overlay" id="authModal">
+        <div class="auth-modal">
+            <button type="button" class="modal-close" id="closeAuthModalBtn">&times;</button>
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab active" id="tabLoginBtn">Вход</button>
+                <button type="button" class="auth-tab" id="tabRegisterBtn">Регистрация</button>
+            </div>
+
+            <form id="authForm" style="margin-top:20px;">
+                <div class="form-group">
+                    <label for="authUsername">Имя пользователя</label>
+                    <input type="text" id="authUsername" placeholder="Введите логин" required minlength="3" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label for="authPassword">Пароль</label>
+                    <input type="password" id="authPassword" placeholder="Введите пароль" required minlength="6">
+                </div>
+                <div class="auth-error-msg" id="authErrorMsg"></div>
+                <button type="submit" class="btn-generate" id="authSubmitBtn" style="margin-top:16px;">
+                    <span id="authSubmitText">Войти в аккаунт</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Frontend Logic -->
+    <script>
+        // Security Helper to sanitize and escape text before rendering HTML
+        function escapeHtml(str) {
+            if (typeof str !== 'string') return str;
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Auth Token Management
+        let authToken = localStorage.getItem('hoop_pro_token') || null;
+        let authUsername = localStorage.getItem('hoop_pro_username') || null;
+
+        const openAuthModalBtn = document.getElementById('openAuthModalBtn');
+        const userProfileBadge = document.getElementById('userProfileBadge');
+        const userNameDisplay = document.getElementById('userNameDisplay');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const authModal = document.getElementById('authModal');
+        const closeAuthModalBtn = document.getElementById('closeAuthModalBtn');
+        const tabLoginBtn = document.getElementById('tabLoginBtn');
+        const tabRegisterBtn = document.getElementById('tabRegisterBtn');
+        const authForm = document.getElementById('authForm');
+        const authErrorMsg = document.getElementById('authErrorMsg');
+        const authSubmitText = document.getElementById('authSubmitText');
+
+        let isRegisterMode = false;
+
+        function updateAuthUI() {
+            if (authToken && authUsername) {
+                openAuthModalBtn.style.display = 'none';
+                userProfileBadge.style.display = 'flex';
+                userNameDisplay.textContent = authUsername;
+            } else {
+                openAuthModalBtn.style.display = 'inline-block';
+                userProfileBadge.style.display = 'none';
+            }
+            renderHistoryUI();
+        }
+
+        openAuthModalBtn.addEventListener('click', () => {
+            authErrorMsg.style.display = 'none';
+            authModal.style.display = 'flex';
+        });
+
+        closeAuthModalBtn.addEventListener('click', () => {
+            authModal.style.display = 'none';
+        });
+
+        tabLoginBtn.addEventListener('click', () => {
+            isRegisterMode = false;
+            tabLoginBtn.classList.add('active');
+            tabRegisterBtn.classList.remove('active');
+            authSubmitText.textContent = 'Войти в аккаунт';
+            authErrorMsg.style.display = 'none';
+        });
+
+        tabRegisterBtn.addEventListener('click', () => {
+            isRegisterMode = true;
+            tabRegisterBtn.classList.add('active');
+            tabLoginBtn.classList.remove('active');
+            authSubmitText.textContent = 'Зарегистрироваться';
+            authErrorMsg.style.display = 'none';
+        });
+
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            authErrorMsg.style.display = 'none';
+
+            const usernameVal = document.getElementById('authUsername').value.trim();
+            const passwordVal = document.getElementById('authPassword').value;
+
+            const endpoint = isRegisterMode ? '/api/register' : '/api/login';
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: usernameVal, password: passwordVal })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    authToken = data.token;
+                    authUsername = data.username;
+                    localStorage.setItem('hoop_pro_token', authToken);
+                    localStorage.setItem('hoop_pro_username', authUsername);
+                    authModal.style.display = 'none';
+                    updateAuthUI();
+                } else {
+                    authErrorMsg.textContent = data.detail || 'Ошибка авторизации.';
+                    authErrorMsg.style.display = 'block';
+                }
+            } catch (err) {
+                authErrorMsg.textContent = 'Сбой сети при запросе авторизации.';
+                authErrorMsg.style.display = 'block';
+            }
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            authToken = null;
+            authUsername = null;
+            localStorage.removeItem('hoop_pro_token');
+            localStorage.removeItem('hoop_pro_username');
+            updateAuthUI();
+        });
+
+        // Position Select Buttons
+        const posBtns = document.querySelectorAll('.pos-btn');
+        const posInput = document.getElementById('position');
+        posBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                posBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                posInput.value = btn.dataset.pos;
+            });
+        });
+
+        // Days Selector Pills
+        const dayPills = document.querySelectorAll('.day-pill');
+        const daysInput = document.getElementById('days_per_week');
+        dayPills.forEach(pill => {
+            pill.addEventListener('click', () => {
+                dayPills.forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                daysInput.value = pill.dataset.days;
+            });
+        });
+
+        // Model Selector Radio Pills
+        const modelPills = document.querySelectorAll('.model-pill');
+        const selectedModelInput = document.getElementById('selected_model');
+        modelPills.forEach(pill => {
+            const radio = pill.querySelector('input[type="radio"]');
+            pill.addEventListener('click', () => {
+                modelPills.forEach(m => {
+                    m.classList.remove('active');
+                    m.querySelector('input[type="radio"]').checked = false;
+                });
+                pill.classList.add('active');
+                radio.checked = true;
+                selectedModelInput.value = pill.dataset.model;
+            });
+        });
+
+        // Multi-select Goals & Validation
+        const goalPills = document.querySelectorAll('.goal-pill');
+        const goalWarning = document.getElementById('goalWarning');
+        const submitBtn = document.getElementById('submitBtn');
+
+        function validateGoals() {
+            const activePills = document.querySelectorAll('.goal-pill.active');
+            const selectedKeys = Array.from(activePills).map(p => p.dataset.key);
+
+            if (selectedKeys.length === 0) {
+                goalWarning.innerHTML = '⚠️ Выберите хотя бы одну цель тренировки.';
+                goalWarning.style.display = 'block';
+                submitBtn.disabled = true;
+                return false;
+            }
+
+            if (selectedKeys.length > 3) {
+                goalWarning.innerHTML = '⚠️ Выбрано более 3 целей. Для максимального физического прогресса выберите не более 3 главных приоритетов.';
+                goalWarning.style.display = 'block';
+                submitBtn.disabled = true;
+                return false;
+            }
+
+            // Conflict Check: Strength & Recovery
+            if (selectedKeys.includes('strength') && selectedKeys.includes('recovery')) {
+                goalWarning.innerHTML = '⚠️ <strong>Конфликт целей:</strong> Силовая подготовка (гипертрофия) требует высокого физического объема, что несовместимо с восстановительной программой. Выберите одну преимущественную цель.';
+                goalWarning.style.display = 'block';
+                submitBtn.disabled = true;
+                return false;
+            }
+
+            goalWarning.style.display = 'none';
+            submitBtn.disabled = false;
+            return true;
+        }
+
+        goalPills.forEach(pill => {
+            const checkbox = pill.querySelector('input[type="checkbox"]');
+            pill.addEventListener('click', (e) => {
+                if (e.target !== checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+                pill.classList.toggle('active', checkbox.checked);
+                validateGoals();
+            });
+        });
+
+        let lastApiResult = null;
+
+        // Form Submit Handler
+        const form = document.getElementById('coachForm');
+        const placeholderState = document.getElementById('placeholderState');
+        const loaderState = document.getElementById('loaderState');
+        const resultsState = document.getElementById('resultsState');
+        const scheduleGrid = document.getElementById('scheduleGrid');
+        const sourceName = document.getElementById('sourceName');
+        const loaderTitle = document.getElementById('loaderTitle');
+        const loaderSub = document.getElementById('loaderSub');
+        const downloadTxtBtn = document.getElementById('downloadTxtBtn');
+
+        let progressInterval = null;
+
+        const loadingSteps = [
+            { title: "📚 Извлечение методических материалов из базы знаний PDF...", sub: "Изучаем исследования по биомеханике, силовой подготовке и профилактике травм" },
+            { title: "🧠 Анализ параметров нейросетью...", sub: "Детально рассчитываем нагрузку и технические нюансы под ваши параметры" },
+            { title: "💪 Расчет весов (% 1RM), подходов, повторений и интервалов отдыха...", sub: "Адаптируем плиометрику и упражнения с учётом суставов и позиционных требований" },
+            { title: "✨ Финальное структурирование элитной программы тренировок...", sub: "Формируем персональные рекомендации, разминку, основной блок и советы тренера" }
+        ];
+
+        function startProgressTicker() {
+            let step = 0;
+            loaderTitle.textContent = loadingSteps[0].title;
+            loaderSub.textContent = loadingSteps[0].sub;
+            if (progressInterval) clearInterval(progressInterval);
+            progressInterval = setInterval(() => {
+                step = (step + 1) % loadingSteps.length;
+                loaderTitle.textContent = loadingSteps[step].title;
+                loaderSub.textContent = loadingSteps[step].sub;
+            }, 10000);
+        }
+
+        function stopProgressTicker() {
+            if (progressInterval) clearInterval(progressInterval);
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!validateGoals()) return;
+
+            const selectedGoals = Array.from(document.querySelectorAll('.goal-pill.active'))
+                .map(p => p.dataset.label);
+
+            const selectedModel = selectedModelInput.value || "claude-sonnet-5";
+
+            // Prepare Payload
+            const payload = {
+                height: parseInt(document.getElementById('height').value),
+                weight: parseFloat(document.getElementById('weight').value),
+                position: posInput.value,
+                goal: selectedGoals,
+                days_per_week: parseInt(daysInput.value),
+                injuries: document.getElementById('injuries').value || "Нет",
+                model: selectedModel
+            };
+
+            // Switch UI to Loading
+            placeholderState.style.display = 'none';
+            resultsState.style.display = 'none';
+            loaderState.style.display = 'block';
+            submitBtn.disabled = true;
+            startProgressTicker();
+
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (authToken) {
+                    headers['Authorization'] = `Bearer ${authToken}`;
+                }
+
+                const response = await fetch('/generate_plan', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
+
+                const initData = await response.json();
+
+                if (initData.status === 'processing' && initData.task_id) {
+                    // Start polling
+                    const taskId = initData.task_id;
+                    const pollInterval = setInterval(async () => {
+                        try {
+                            const pollResponse = await fetch(`/plan_status/${taskId}`);
+                            const pollData = await pollResponse.json();
+
+                            if (pollData.status === 'success') {
+                                clearInterval(pollInterval);
+                                stopProgressTicker();
+                                lastApiResult = pollData;
+
+                                // Save locally if guest
+                                if (!authToken) {
+                                    addPlanToLocalHistory(payload, pollData);
+                                } else {
+                                    fetchServerHistory();
+                                }
+
+                                try {
+                                    renderSchedule(pollData);
+                                } catch (renderErr) {
+                                    console.error('Render error:', renderErr);
+                                }
+                                loaderState.style.display = 'none';
+                                submitBtn.disabled = false;
+                            } else if (pollData.status === 'error') {
+                                clearInterval(pollInterval);
+                                stopProgressTicker();
+                                alert('Ошибка: ' + pollData.message);
+                                loaderState.style.display = 'none';
+                                submitBtn.disabled = false;
+                            }
+                            // if processing, continue polling...
+                        } catch (e) {
+                            console.error('Polling error', e);
+                        }
+                    }, 3000); // Poll every 3 seconds
+                } else {
+                    alert('Ошибка при запуске генерации. Попробуйте еще раз.');
+                    stopProgressTicker();
+                    loaderState.style.display = 'none';
+                    submitBtn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Fetch error:', err);
+                alert('Сбой соединения при отправке запроса.');
+                stopProgressTicker();
+                loaderState.style.display = 'none';
+                submitBtn.disabled = false;
+            }
+        });
+
+        function getBlockLabel(key) {
+            const labels = {
+                warmup: '🔥 Разминка',
+                main_block: '🏀 Основной Блок',
+                cool_down: '🧘 Заминка и Растяжка',
+                exercises: '💪 Упражнения',
+                skills: '🎯 Навыки'
+            };
+            return labels[key] || escapeHtml(key);
+        }
+
+        function renderExerciseItem(ex) {
+            if (typeof ex === 'string') {
+                return `<li class="exercise-item"><div class="ex-name">${escapeHtml(ex)}</div></li>`;
+            }
+            if (typeof ex !== 'object' || ex === null) {
+                return `<li class="exercise-item"><div class="ex-name">${escapeHtml(String(ex))}</div></li>`;
+            }
+
+            const name = escapeHtml(ex.name || ex.exercise || ex.title || 'Упражнение');
+            const sets = ex.sets ? `<span class="ex-pill">${escapeHtml(String(ex.sets))} подх.</span>` : '';
+            const reps = ex.reps ? `<span class="ex-pill">${escapeHtml(String(ex.reps))}</span>` : '';
+            const duration = ex.duration ? `<span class="ex-pill">${escapeHtml(String(ex.duration))}</span>` : '';
+            const notes = ex.notes || ex.instruction || ex.description ? `<div style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">💡 ${escapeHtml(String(ex.notes || ex.instruction || ex.description))}</div>` : '';
+
+            return `
+                <li class="exercise-item" style="flex-direction:column; align-items:flex-start;">
+                    <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                        <span class="ex-name">${name}</span>
+                        <div class="ex-meta">${sets}${reps}${duration}</div>
+                    </div>
+                    ${notes}
+                </li>
+            `;
+        }
+
+        // Render Generated Schedule safely with universal nested block parsing
+        function renderSchedule(apiResult) {
+            sourceName.textContent = apiResult.source || 'AI Engine';
+            scheduleGrid.innerHTML = '';
+
+            const data = apiResult.data || {};
+
+            // 1. Summary Card (program_overview, summary, etc.)
+            const summaryText = data.summary || data.program_summary || data.overview || data.program_overview;
+            if (summaryText) {
+                const summaryDiv = document.createElement('div');
+                summaryDiv.className = 'summary-card';
+                let summaryContent = '';
+                if (typeof summaryText === 'string') {
+                    summaryContent = escapeHtml(summaryText);
+                } else if (typeof summaryText === 'object') {
+                    summaryContent = Object.entries(summaryText).map(([k, v]) => {
+                        const vStr = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                        return `<div style="margin-bottom:4px;"><strong>${escapeHtml(k)}:</strong> ${escapeHtml(vStr)}</div>`;
+                    }).join('');
+                }
+                summaryDiv.innerHTML = `
+                    <div class="summary-title">🎯 Обзор & Программа Тренировок</div>
+                    <div class="summary-text">${summaryContent}</div>
+                `;
+                scheduleGrid.appendChild(summaryDiv);
+            }
+
+            // 2. Safety Card (safety_notes, safety_guidelines, etc.)
+            const safetyData = data.safety_notes || data.safety_guidelines || data.safety || data.safety_rules;
+            if (safetyData) {
+                const safetyDiv = document.createElement('div');
+                safetyDiv.className = 'safety-card';
+                let safetyItemsHtml = '';
+
+                if (Array.isArray(safetyData)) {
+                    safetyItemsHtml = safetyData.map(item => `<li class="safety-item">${escapeHtml(String(item))}</li>`).join('');
+                } else if (typeof safetyData === 'object') {
+                    safetyItemsHtml = Object.entries(safetyData).map(([key, val]) => {
+                        const valStr = typeof val === 'object' ? JSON.stringify(val) : String(val);
+                        return `<li class="safety-item"><strong>${escapeHtml(key)}:</strong> ${escapeHtml(valStr)}</li>`;
+                    }).join('');
+                } else {
+                    safetyItemsHtml = `<li class="safety-item">${escapeHtml(String(safetyData))}</li>`;
+                }
+
+                safetyDiv.innerHTML = `
+                    <div class="safety-title">🛡️ Безопасность и Правила Нагрузки</div>
+                    <ul class="safety-list">${safetyItemsHtml}</ul>
+                `;
+                scheduleGrid.appendChild(safetyDiv);
+            }
+
+            // 3. Extract Schedule Days
+            let scheduleRaw = data.schedule || data.weekly_schedule || data.weekly_template || data.weekly_plan || data.plan || data.days;
+            let scheduleItems = [];
+
+            if (Array.isArray(scheduleRaw)) {
+                scheduleItems = scheduleRaw;
+            } else if (typeof scheduleRaw === 'object' && scheduleRaw !== null) {
+                scheduleItems = Object.entries(scheduleRaw).map(([key, val]) => {
+                    return typeof val === 'object' ? { day: key, ...val } : { day: key, focus: val };
+                });
+            }
+
+            scheduleItems.forEach((item, index) => {
+                const dayCard = document.createElement('div');
+                dayCard.className = 'day-card';
+
+                const dayTitle = escapeHtml(item.day || item.title || item.day_name || `День ${index + 1}`);
+                const focusTitle = escapeHtml(item.focus || item.topic || item.primary_focus || 'Тренировочный день');
+
+                let exercisesHtml = '';
+
+                if (Array.isArray(item.exercises)) {
+                    exercisesHtml = item.exercises.map(ex => renderExerciseItem(ex)).join('');
+                } else {
+                    const blocks = [];
+                    for (const [k, v] of Object.entries(item)) {
+                        if (['day', 'title', 'focus', 'day_name', 'topic', 'primary_focus', 'duration_min', 'duration'].includes(k)) continue;
+
+                        if (Array.isArray(v)) {
+                            const subItems = v.map(ex => renderExerciseItem(ex)).join('');
+                            const blockLabel = getBlockLabel(k);
+                            blocks.push(`<div style="margin-top:12px;"><strong style="color:var(--accent-orange); font-size:0.88rem; font-family:var(--font-display); letter-spacing:0.5px;">${blockLabel}</strong><ul class="exercise-list" style="margin-top:6px;">${subItems}</ul></div>`);
+                        } else if (typeof v === 'object' && v !== null) {
+                            blocks.push(`<li class="exercise-item"><div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(JSON.stringify(v))}</div></li>`);
+                        } else {
+                            blocks.push(`<li class="exercise-item"><div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(v))}</div></li>`);
+                        }
+                    }
+                    exercisesHtml = blocks.join('');
+                }
+
+                dayCard.innerHTML = `
+                    <div class="day-header">
+                        <div class="day-name">${dayTitle}</div>
+                        <div class="day-focus">${focusTitle}</div>
+                    </div>
+                    <ul class="exercise-list">
+                        ${exercisesHtml}
+                    </ul>
+                `;
+
+                scheduleGrid.appendChild(dayCard);
+            });
+
+            resultsState.style.display = 'block';
+        }
+
+        // Export Plan to TXT File
+        function downloadPlanAsTxt() {
+            if (!lastApiResult || !lastApiResult.data) {
+                alert('Нет данных для скачивания.');
+                return;
+            }
+
+            const data = lastApiResult.data;
+            const height = document.getElementById('height').value;
+            const weight = document.getElementById('weight').value;
+            const position = posInput.value;
+            const days = daysInput.value;
+            const injuries = document.getElementById('injuries').value || 'Нет';
+            const source = lastApiResult.source || 'AI Engine';
+
+            const activeGoals = Array.from(document.querySelectorAll('.goal-pill.active'))
+                .map(p => p.dataset.label)
+                .join(', ');
+
+            let txt = `================================================================\n`;
+            txt += `       HOOP PRO AI — ПЕРСОНАЛЬНАЯ ПРОГРАММА ТРЕНИРОВОК         \n`;
+            txt += `================================================================\n\n`;
+
+            txt += `ПАРАМЕТРЫ ИГРОКА:\n`;
+            txt += `----------------------------------------------------------------\n`;
+            txt += `• Рост: ${height} см\n`;
+            txt += `• Вес: ${weight} кг\n`;
+            txt += `• Позиция на площадке: ${position}\n`;
+            txt += `• Дней тренировок в неделю: ${days}\n`;
+            txt += `• Выбранные цели: ${activeGoals}\n`;
+            txt += `• Травмы / ограничения: ${injuries}\n`;
+            txt += `• Движок ИИ: ${source}\n`;
+            txt += `----------------------------------------------------------------\n\n`;
+
+            // 1. Summary
+            const summaryText = data.summary || data.program_summary || data.overview || data.program_overview;
+            if (summaryText) {
+                txt += `🎯 ОБЗОР ПРОГРАММЫ И КЛЮЧЕВЫЕ ЗАДАЧИ:\n`;
+                txt += `----------------------------------------------------------------\n`;
+                if (typeof summaryText === 'string') {
+                    txt += `${summaryText}\n`;
+                } else if (typeof summaryText === 'object') {
+                    for (const [k, v] of Object.entries(summaryText)) {
+                        txt += `• ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}\n`;
+                    }
+                }
+                txt += `\n`;
+            }
+
+            // 2. Safety notes
+            const safetyData = data.safety_notes || data.safety_guidelines || data.safety || data.safety_rules;
+            if (safetyData) {
+                txt += `🛡️ БЕЗОПАСНОСТЬ И ТЕХНИКА БЕЗОПАСНОСТИ:\n`;
+                txt += `----------------------------------------------------------------\n`;
+                if (Array.isArray(safetyData)) {
+                    safetyData.forEach(rule => txt += `• ${rule}\n`);
+                } else if (typeof safetyData === 'object') {
+                    for (const [k, v] of Object.entries(safetyData)) {
+                        txt += `• ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}\n`;
+                    }
+                } else {
+                    txt += `• ${safetyData}\n`;
+                }
+                txt += `\n`;
+            }
+
+            // 3. Schedule
+            let scheduleRaw = data.schedule || data.weekly_schedule || data.weekly_template || data.weekly_plan || data.plan || data.days;
+            let scheduleItems = [];
+            if (Array.isArray(scheduleRaw)) {
+                scheduleItems = scheduleRaw;
+            } else if (typeof scheduleRaw === 'object' && scheduleRaw !== null) {
+                scheduleItems = Object.entries(scheduleRaw).map(([key, val]) => {
+                    return typeof val === 'object' ? { day: key, ...val } : { day: key, focus: val };
+                });
+            }
+
+            txt += `================================================================\n`;
+            txt += `                  РАСПИСАНИЕ ТРЕНИРОВОК ПО ДНЯМ                  \n`;
+            txt += `================================================================\n\n`;
+
+            scheduleItems.forEach((item, index) => {
+                const dayTitle = item.day || item.title || item.day_name || `День ${index + 1}`;
+                const focusTitle = item.focus || item.topic || item.primary_focus || 'Тренировочный день';
+
+                txt += `📌 ${dayTitle.toUpperCase()} — ${focusTitle}\n`;
+                txt += `----------------------------------------------------------------\n`;
+
+                if (Array.isArray(item.exercises)) {
+                    item.exercises.forEach((ex, i) => {
+                        if (typeof ex === 'string') {
+                            txt += `  ${i + 1}. ${ex}\n`;
+                        } else if (typeof ex === 'object' && ex !== null) {
+                            const name = ex.name || ex.exercise || ex.title || 'Упражнение';
+                            const sets = ex.sets ? `${ex.sets} подх.` : '';
+                            const reps = ex.reps ? `${ex.reps}` : '';
+                            const duration = ex.duration ? `${ex.duration}` : '';
+                            const meta = [sets, reps, duration].filter(Boolean).join(' | ');
+                            txt += `  ${i + 1}. ${name}${meta ? ' (' + meta + ')' : ''}\n`;
+                            if (ex.notes || ex.instruction || ex.description) {
+                                txt += `     💡 Указания: ${ex.notes || ex.instruction || ex.description}\n`;
+                            }
+                        }
+                    });
+                } else {
+                    for (const [k, v] of Object.entries(item)) {
+                        if (['day', 'title', 'focus', 'day_name', 'topic', 'primary_focus'].includes(k)) continue;
+                        txt += `  [${k}]: ${typeof v === 'object' ? JSON.stringify(v) : v}\n`;
+                    }
+                }
+                txt += `\n`;
+            });
+
+            txt += `================================================================\n`;
+            txt += `Сгенерировано в HOOP PRO AI на основе научных методик физической подготовки.\n`;
+            txt += `================================================================\n`;
+
+            // Trigger Download
+            const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Basketball_Training_Plan_${position}_${days}days.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        downloadTxtBtn.addEventListener('click', downloadPlanAsTxt);
+
+        // History Storage & Manager
+        const HISTORY_KEY = 'hoop_pro_history_v1';
+        const historyList = document.getElementById('historyList');
+        const historyCount = document.getElementById('historyCount');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+        function loadLocalHistory() {
+            try {
+                const data = localStorage.getItem(HISTORY_KEY);
+                return data ? JSON.parse(data) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveLocalHistory(items) {
+            try {
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+            } catch (e) {}
+        }
+
+        function addPlanToLocalHistory(payload, pollData) {
+            const history = loadLocalHistory();
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
+                            now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+            const newItem = {
+                id: 'plan_' + Date.now(),
+                timestamp: dateStr,
+                payload: payload,
+                apiResult: pollData
+            };
+
+            history.unshift(newItem);
+            if (history.length > 30) history.pop();
+
+            saveLocalHistory(history);
+            renderHistoryUI();
+        }
+
+        async function fetchServerHistory() {
+            if (!authToken) return loadLocalHistory();
+            try {
+                const res = await fetch('/api/history', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    return data.history || [];
+                }
+            } catch (e) {
+                console.error('Failed to fetch server history', e);
+            }
+            return loadLocalHistory();
+        }
+
+        async function renderHistoryUI() {
+            let history = [];
+            if (authToken) {
+                history = await fetchServerHistory();
+            } else {
+                history = loadLocalHistory();
+            }
+
+            historyCount.textContent = history.length;
+
+            if (history.length === 0) {
+                clearHistoryBtn.style.display = 'none';
+                historyList.innerHTML = `
+                    <div class="placeholder-state" style="padding: 30px 20px;">
+                        <p style="color: var(--text-muted);">История пока пуста. Сгенерируйте свою первую программу тренировок!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            clearHistoryBtn.style.display = 'inline-block';
+            historyList.innerHTML = '';
+
+            history.forEach(item => {
+                const p = item.payload || {};
+                const goalsText = Array.isArray(p.goal) ? p.goal.join(', ') : (p.goal || 'Тренировка');
+                const pos = escapeHtml(p.position || 'PG');
+                const days = escapeHtml(String(p.days_per_week || 3));
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'history-item';
+                itemDiv.dataset.id = item.id;
+
+                itemDiv.innerHTML = `
+                    <div class="history-info">
+                        <div class="history-meta">
+                            <span class="history-badge">🏀 ${pos}</span>
+                            <span class="history-badge">🗓️ ${days} дн/нед</span>
+                            <span class="history-date">🕒 ${escapeHtml(item.timestamp)}</span>
+                        </div>
+                        <div class="history-goals">${escapeHtml(goalsText)}</div>
+                    </div>
+                    <div class="history-actions">
+                        <button type="button" class="btn-hist-action btn-hist-load" title="Загрузить эту программу">
+                            👁️ Открыть
+                        </button>
+                        <button type="button" class="btn-hist-action btn-hist-dl" title="Скачать TXT">
+                            📄 TXT
+                        </button>
+                        <button type="button" class="btn-hist-action btn-hist-del" title="Удалить из истории">
+                            🗑️
+                        </button>
+                    </div>
+                `;
+
+                itemDiv.querySelector('.btn-hist-load').addEventListener('click', () => {
+                    lastApiResult = item.apiResult;
+                    placeholderState.style.display = 'none';
+                    loaderState.style.display = 'none';
+                    try {
+                        renderSchedule(item.apiResult);
+                    } catch (e) {
+                        console.error('Error rendering history plan:', e);
+                    }
+                    const targetTop = document.getElementById('outputCard').offsetTop - 20;
+                    window.scrollTo({ top: targetTop, behavior: 'smooth' });
+                });
+
+                itemDiv.querySelector('.btn-hist-dl').addEventListener('click', () => {
+                    downloadSpecificPlanAsTxt(item.payload, item.apiResult);
+                });
+
+                itemDiv.querySelector('.btn-hist-del').addEventListener('click', async () => {
+                    if (authToken) {
+                        await fetch(`/api/history/${item.id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${authToken}` }
+                        });
+                    }
+                    let locHist = loadLocalHistory().filter(i => i.id !== item.id);
+                    saveLocalHistory(locHist);
+                    renderHistoryUI();
+                });
+
+                historyList.appendChild(itemDiv);
+            });
+        }
+
+        function downloadSpecificPlanAsTxt(payload, apiResult) {
+            if (!apiResult || !apiResult.data) {
+                alert('Нет данных для скачивания.');
+                return;
+            }
+
+            const data = apiResult.data;
+            const p = payload || {};
+            const height = p.height || 190;
+            const weight = p.weight || 85;
+            const position = p.position || 'PG';
+            const days = p.days_per_week || 3;
+            const injuries = p.injuries || 'Нет';
+            const source = apiResult.source || 'AI Engine';
+
+            const activeGoals = Array.isArray(p.goal) ? p.goal.join(', ') : (p.goal || 'Тренировка');
+
+            let txt = `================================================================\n`;
+            txt += `       HOOP PRO AI — ПЕРСОНАЛЬНАЯ ПРОГРАММА ТРЕНИРОВОК         \n`;
+            txt += `================================================================\n\n`;
+
+            txt += `ПАРАМЕТРЫ ИГРОКА:\n`;
+            txt += `----------------------------------------------------------------\n`;
+            txt += `• Рост: ${height} см\n`;
+            txt += `• Вес: ${weight} кг\n`;
+            txt += `• Позиция на площадке: ${position}\n`;
+            txt += `• Дней тренировок в неделю: ${days}\n`;
+            txt += `• Выбранные цели: ${activeGoals}\n`;
+            txt += `• Травмы / ограничения: ${injuries}\n`;
+            txt += `• Движок ИИ: ${source}\n`;
+            txt += `----------------------------------------------------------------\n\n`;
+
+            // 1. Summary
+            const summaryText = data.summary || data.program_summary || data.overview || data.program_overview;
+            if (summaryText) {
+                txt += `🎯 ОБЗОР ПРОГРАММЫ И КЛЮЧЕВЫЕ ЗАДАЧИ:\n`;
+                txt += `----------------------------------------------------------------\n`;
+                if (typeof summaryText === 'string') {
+                    txt += `${summaryText}\n`;
+                } else if (typeof summaryText === 'object') {
+                    for (const [k, v] of Object.entries(summaryText)) {
+                        txt += `• ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}\n`;
+                    }
+                }
+                txt += `\n`;
+            }
+
+            // 2. Safety notes
+            const safetyData = data.safety_notes || data.safety_guidelines || data.safety || data.safety_rules;
+            if (safetyData) {
+                txt += `🛡️ БЕЗОПАСНОСТЬ И ТЕХНИКА БЕЗОПАСНОСТИ:\n`;
+                txt += `----------------------------------------------------------------\n`;
+                if (Array.isArray(safetyData)) {
+                    safetyData.forEach(rule => txt += `• ${rule}\n`);
+                } else if (typeof safetyData === 'object') {
+                    for (const [k, v] of Object.entries(safetyData)) {
+                        txt += `• ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}\n`;
+                    }
+                } else {
+                    txt += `• ${safetyData}\n`;
+                }
+                txt += `\n`;
+            }
+
+            // 3. Schedule
+            let scheduleRaw = data.schedule || data.weekly_schedule || data.weekly_template || data.weekly_plan || data.plan || data.days;
+            let scheduleItems = [];
+            if (Array.isArray(scheduleRaw)) {
+                scheduleItems = scheduleRaw;
+            } else if (typeof scheduleRaw === 'object' && scheduleRaw !== null) {
+                scheduleItems = Object.entries(scheduleRaw).map(([key, val]) => {
+                    return typeof val === 'object' ? { day: key, ...val } : { day: key, focus: val };
+                });
+            }
+
+            txt += `================================================================\n`;
+            txt += `                  РАСПИСАНИЕ ТРЕНИРОВОК ПО ДНЯМ                  \n`;
+            txt += `================================================================\n\n`;
+
+            scheduleItems.forEach((item, index) => {
+                const dayTitle = item.day || item.title || item.day_name || `День ${index + 1}`;
+                const focusTitle = item.focus || item.topic || item.primary_focus || 'Тренировочный день';
+
+                txt += `📌 ${dayTitle.toUpperCase()} — ${focusTitle}\n`;
+                txt += `----------------------------------------------------------------\n`;
+
+                if (Array.isArray(item.exercises)) {
+                    item.exercises.forEach((ex, i) => {
+                        if (typeof ex === 'string') {
+                            txt += `  ${i + 1}. ${ex}\n`;
+                        } else if (typeof ex === 'object' && ex !== null) {
+                            const name = ex.name || ex.exercise || ex.title || 'Упражнение';
+                            const sets = ex.sets ? `${ex.sets} подх.` : '';
+                            const reps = ex.reps ? `${ex.reps}` : '';
+                            const duration = ex.duration ? `${ex.duration}` : '';
+                            const meta = [sets, reps, duration].filter(Boolean).join(' | ');
+                            txt += `  ${i + 1}. ${name}${meta ? ' (' + meta + ')' : ''}\n`;
+                            if (ex.notes || ex.instruction || ex.description) {
+                                txt += `     💡 Указания: ${ex.notes || ex.instruction || ex.description}\n`;
+                            }
+                        }
+                    });
+                } else {
+                    for (const [k, v] of Object.entries(item)) {
+                        if (['day', 'title', 'focus', 'day_name', 'topic', 'primary_focus'].includes(k)) continue;
+                        txt += `  [${k}]: ${typeof v === 'object' ? JSON.stringify(v) : v}\n`;
+                    }
+                }
+                txt += `\n`;
+            });
+
+            txt += `================================================================\n`;
+            txt += `Сгенерировано в HOOP PRO AI на основе научных методик физической подготовки.\n`;
+            txt += `================================================================\n`;
+
+            // Trigger Download
+            const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Basketball_Training_Plan_${position}_${days}days.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        clearHistoryBtn.addEventListener('click', async () => {
+            if (confirm('Вы уверены, что хотите очистить всю историю программ?')) {
+                if (authToken) {
+                    await fetch('/api/history', {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                }
+                saveLocalHistory([]);
+                renderHistoryUI();
+            }
+        });
+
+        // Initial setup on page load
+        updateAuthUI();
+    </script>
+</body>
+</html>
