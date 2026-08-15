@@ -12,6 +12,7 @@ from llm_service import call_llm_api
 import auth
 
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB max request body to prevent memory exhaustion
 
 # ponytail: VULN-004 fix — restrict CORS to dev / local ports
 CORS(
@@ -25,13 +26,36 @@ CORS(
     allow_headers=["Authorization", "Content-Type"]
 )
 
+
+@app.after_request
+def set_security_headers(response):
+    """Injects OWASP-recommended HTTP security headers to all responses."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 http://localhost:5000 http://127.0.0.1:5000;"
+    )
+    return response
+
+
 # In-memory task database for polling
 tasks_db: Dict[str, Dict[str, Any]] = {}
 
-# VULN-005 fix: simple in-memory rate limiter for auth endpoints
+# VULN-005 fix: in-memory rate limiter for auth & plan generation endpoints
 _rate_limit: Dict[str, list] = {}
 RATE_LIMIT_WINDOW = 60   # seconds
 RATE_LIMIT_MAX = 10      # max attempts per window per IP
+
+_gen_rate_limit: Dict[str, list] = {}
+GEN_RATE_LIMIT_WINDOW = 3600  # 1 hour
+GEN_RATE_LIMIT_MAX = 30       # max 30 plans per hour per IP
 
 
 def rate_limit_check() -> Optional[tuple]:
@@ -40,9 +64,21 @@ def rate_limit_check() -> Optional[tuple]:
     now = time.time()
     attempts = [t for t in _rate_limit.get(ip, []) if t > now - RATE_LIMIT_WINDOW]
     if len(attempts) >= RATE_LIMIT_MAX:
-        return jsonify({"detail": "Слишком много запросов. Попробуйте позже."}), 429
+        return jsonify({"detail": "Слишком много попыток входа/регистрации. Попробуйте позже."}), 429
     attempts.append(now)
     _rate_limit[ip] = attempts
+    return None
+
+
+def gen_rate_limit_check() -> Optional[tuple]:
+    """Checks whether client IP has exceeded plan generation rate limit."""
+    ip = request.remote_addr or "unknown"
+    now = time.time()
+    attempts = [t for t in _gen_rate_limit.get(ip, []) if t > now - GEN_RATE_LIMIT_WINDOW]
+    if len(attempts) >= GEN_RATE_LIMIT_MAX:
+        return jsonify({"detail": "Превышен лимит генераций планов (максимум 30 в час). Попробуйте позже."}), 429
+    attempts.append(now)
+    _gen_rate_limit[ip] = attempts
     return None
 
 
@@ -229,6 +265,10 @@ def process_plan_task(task_id: str, params: dict, username: Optional[str] = None
 
 @app.route("/generate_plan", methods=["POST"])
 def generate_plan():
+    rl_error = gen_rate_limit_check()
+    if rl_error:
+        return rl_error
+
     username = get_token_user()
     data = request.get_json(silent=True) or {}
 
