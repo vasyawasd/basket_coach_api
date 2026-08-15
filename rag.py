@@ -7,6 +7,9 @@ import pypdf
 BASE_KB_DIR = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "knowledge_base")
 )
+MD_INDEX_FILE_PATH = os.path.realpath(
+    os.path.join(os.path.dirname(__file__), "kb_md_index.json")
+)
 INDEX_FILE_PATH = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "kb_index.json")
 )
@@ -23,11 +26,23 @@ def sanitize_input(text: str) -> str:
 
 
 def load_or_build_index() -> List[Dict]:
-    """Loads pre-built full-text index of all 4400+ PDF pages, or builds it if missing."""
+    """Loads pre-built full-text index of Markdown knowledge base pages, or falls back to PDF index."""
     global _FULL_PAGE_INDEX
     if _FULL_PAGE_INDEX:
         return _FULL_PAGE_INDEX
 
+    # 1. Prioritize clean, token-optimized Markdown Index
+    if os.path.exists(MD_INDEX_FILE_PATH):
+        try:
+            with open(MD_INDEX_FILE_PATH, "r", encoding="utf-8") as f:
+                _FULL_PAGE_INDEX = json.load(f)
+                print(f"[RAG] Successfully loaded Markdown Index ({len(_FULL_PAGE_INDEX)} MD page entries)")
+                return _FULL_PAGE_INDEX
+        except Exception as e:
+            print(f"[RAG] Failed to load MD index: {e}")
+            _FULL_PAGE_INDEX = []
+
+    # 2. Fallback to legacy PDF index
     if os.path.exists(INDEX_FILE_PATH):
         try:
             with open(INDEX_FILE_PATH, "r", encoding="utf-8") as f:
@@ -121,14 +136,14 @@ def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") ->
 
     scored_pages.sort(key=lambda x: x[0], reverse=True)
 
-    # Take TOP 12 most relevant pages
-    top_entries = [entry for score, entry in scored_pages[:12]]
+    # Take TOP 4 most relevant pages
+    top_entries = [entry for score, entry in scored_pages[:4]]
 
     snippets = []
     for entry in top_entries:
-        header = f"=== [КНИГА: {entry['book']} | СТРАНИЦА: {entry['page']}] ==="
-        snippets.append(f"{header}\n{entry['text']}")
+        header = f"=== [{entry['book']}] ==="
+        snippets.append(f"{header}\n{entry['text'][:900].strip()}")
 
     full_context = "\n\n".join(snippets)
-    # Return up to 25,000 characters of exact scientific text from all books
-    return full_context[:25000]
+    # Return up to 4,000 characters of concentrated scientific context (fast & token-efficient)
+    return full_context[:4000]

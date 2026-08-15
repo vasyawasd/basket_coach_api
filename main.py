@@ -49,7 +49,7 @@ class PlayerParams(BaseModel):
     goal: Union[str, List[str]] = Field(..., description="Training goal or list of goals")
     days_per_week: int = Field(..., ge=1, le=7, description="Training days per week")
     injuries: Optional[str] = Field(None, max_length=500, description="Existing injuries or limitations")
-    model: Optional[str] = Field("claude-sonnet-5", max_length=50, description="Selected AI Model")
+    model: Optional[str] = Field("qwen3.8-max-preview", max_length=50, description="Selected AI Model")
 
 
 class AuthSchema(BaseModel):

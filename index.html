@@ -1098,41 +1098,7 @@
                         <input type="text" id="injuries" placeholder="Например: Боль в колене, нет" value="Нет">
                     </div>
 
-                    <!-- AI Model Selector with usage hints -->
-                    <div class="form-group">
-                        <label>Модель ИИ</label>
-                        <div class="model-selector-grid">
-                            <label class="model-pill active" data-model="claude-sonnet-5">
-                                <input type="radio" name="ai_model" value="claude-sonnet-5" checked>
-                                <div class="model-info">
-                                    <div class="model-title">🚀 Claude Sonnet 5 <span class="model-rec-tag">Рекомендуется</span></div>
-                                    <div class="model-desc">Быстрая генерация (15–20 сек) и высокое качество тренировочного плана</div>
-                                </div>
-                            </label>
-                            <label class="model-pill" data-model="claude-opus-5">
-                                <input type="radio" name="ai_model" value="claude-opus-5">
-                                <div class="model-info">
-                                    <div class="model-title">🧠 Claude Opus 5</div>
-                                    <div class="model-desc">Максимальная глубина: тщательный анализ базы знаний и сложных травм (1–2 мин)</div>
-                                </div>
-                            </label>
-                            <label class="model-pill" data-model="claude-haiku-4.5">
-                                <input type="radio" name="ai_model" value="claude-haiku-4.5">
-                                <div class="model-info">
-                                    <div class="model-title">⚡ Claude Haiku 4.5</div>
-                                    <div class="model-desc">Экспресс: мгновенная генерация за 3–5 секунд для быстрого обзора</div>
-                                </div>
-                            </label>
-                            <label class="model-pill" data-model="gpt-5.5">
-                                <input type="radio" name="ai_model" value="gpt-5.5">
-                                <div class="model-info">
-                                    <div class="model-title">🤖 GPT-5.5</div>
-                                    <div class="model-desc">Альтернативный ИИ: высокая точность вариативности упражнений</div>
-                                </div>
-                            </label>
-                        </div>
-                        <input type="hidden" id="selected_model" value="claude-sonnet-5">
-                    </div>
+                    <input type="hidden" id="selected_model" value="auto">
 
                     <button type="submit" class="btn-generate" id="submitBtn">
                         <span>⚡ Сгенерировать Программу</span>
@@ -1360,21 +1326,6 @@
             });
         });
 
-        // Model Selector Radio Pills
-        const modelPills = document.querySelectorAll('.model-pill');
-        const selectedModelInput = document.getElementById('selected_model');
-        modelPills.forEach(pill => {
-            const radio = pill.querySelector('input[type="radio"]');
-            pill.addEventListener('click', () => {
-                modelPills.forEach(m => {
-                    m.classList.remove('active');
-                    m.querySelector('input[type="radio"]').checked = false;
-                });
-                pill.classList.add('active');
-                radio.checked = true;
-                selectedModelInput.value = pill.dataset.model;
-            });
-        });
 
         // Multi-select Goals & Validation
         const goalPills = document.querySelectorAll('.goal-pill');
@@ -1422,6 +1373,7 @@
                 validateGoals();
             });
         });
+        validateGoals();
 
         let lastApiResult = null;
 
@@ -1469,7 +1421,8 @@
             const selectedGoals = Array.from(document.querySelectorAll('.goal-pill.active'))
                 .map(p => p.dataset.label);
 
-            const selectedModel = selectedModelInput.value || "claude-sonnet-5";
+            const modelInput = document.getElementById('selected_model');
+            const selectedModel = (modelInput && modelInput.value) ? modelInput.value : "auto";
 
             // Prepare Payload
             const payload = {

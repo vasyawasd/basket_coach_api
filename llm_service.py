@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 from json_repair import repair_json
@@ -39,10 +40,29 @@ def extract_and_parse_json(content: str) -> Dict[str, Any]:
     raise ValueError("Could not repair/extract valid JSON from response")
 
 
+def ping_model(client, model_name: str) -> bool:
+    """
+    Sends an ultra-lightweight 1-token health probe (costs ~0 tokens, 5.0s timeout).
+    Returns True only if the model is alive and returns 200 OK.
+    """
+    try:
+        resp = client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=2,
+            timeout=5.0,
+        )
+        content = resp.choices[0].message.content
+        return content is not None
+    except Exception as e:
+        print(f"[LLM Probe] '{model_name}' unreachable ({type(e).__name__})", flush=True)
+        return False
+
+
 def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, selected_model: Optional[str] = None) -> Dict[str, Any]:
     """
-    Calls ClaudeHub (app.claudehub.fun), Google Gemini, or OpenAI API
-    to generate an exhaustive, professional training plan using the user-selected model.
+    Pings each model in descending quality order with a 1-token probe before generating.
+    If a model answers, generates the full plan; if not, immediately cascades down.
     """
     claudehub_key = os.getenv("CLAUDEHUB_API_KEY")
     gemini_key = os.getenv("GEMINI_API_KEY")
@@ -50,42 +70,61 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
 
     full_system_instruction = (
         f"{system_prompt}\n\n"
-        f"УЧТИТЕ И ИСПОЛЬЗУЙТЕ СЛЕДУЮЩИЕ МЕТОДИЧЕСКИЕ МАТЕРИАЛЫ БАЗЫ ЗНАНИЙ:\n"
+        f"МАТЕРИАЛЫ БАЗЫ ЗНАНИЙ:\n"
         f"{context_text}\n\n"
-        f"ВАЖНО: Верните ответ ИСКЛЮЧИТЕЛЬНО в формате валидного JSON без разговорного текста вокруг."
+        f"ВАЖНО: Верните результат СТРОГО в формате валидного JSON."
     )
 
-    # Option 1: ClaudeHub API (app.claudehub.fun)
+    # Option 1: ClaudeHub API with Ping Probes (All top models included)
     if claudehub_key and claudehub_key != "your_claudehub_api_key_here":
-        model_name = selected_model or os.getenv("CLAUDEHUB_MODEL") or "claude-sonnet-5"
-        try:
-            from openai import OpenAI
-            import httpx
+        # Full descending quality hierarchy
+        cascade_hierarchy = [
+            "claude-opus-5",        # 1. Flagship Opus 5
+            "claude-sonnet-5",      # 2. High quality Anthropic Sonnet 5
+            "qwen3.8-max-preview",  # 3. Flagship Next-Gen Preview
+            "qwen3.7-max",          # 4. Ultra-reliable Max model
+        ]
 
-            base_url = os.getenv("CLAUDEHUB_BASE_URL") or "https://api.claudehub.fun/v1"
-            # ponytail: no streaming — upstream often holds connection open without sending data,
-            # causing infinite hangs. Sync request lets httpx timeout work properly.
-            client = OpenAI(
-                api_key=claudehub_key,
-                base_url=base_url,
-                timeout=httpx.Timeout(120.0, connect=15.0, read=120.0),
-            )
-            print(f"[LLM] Calling ClaudeHub ({model_name}), prompt ~{len(full_system_instruction)} chars...")
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": full_system_instruction},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_tokens=6000,
-            )
-            content = response.choices[0].message.content
+        if selected_model and selected_model != "auto" and selected_model in cascade_hierarchy:
+            candidates = [selected_model]
+        else:
+            candidates = cascade_hierarchy
 
-            print(f"[LLM] ClaudeHub response received: {len(content)} chars")
-            parsed_json = extract_and_parse_json(content)
-            return {"source": f"claudehub-api ({model_name})", "data": parsed_json}
-        except Exception as e:
-            print(f"[LLM] ClaudeHub API call failed ({model_name}): {type(e).__name__}: {e}")
+        from openai import OpenAI
+        import httpx
+
+        base_url = os.getenv("CLAUDEHUB_BASE_URL") or "https://api.claudehub.fun/v1"
+        client = OpenAI(
+            api_key=claudehub_key,
+            base_url=base_url,
+            max_retries=0,
+            timeout=httpx.Timeout(55.0, connect=6.0, read=55.0),
+        )
+
+        for m_name in candidates:
+            # 1. Send ultra-light 1-token probe
+            print(f"[LLM Probe] Pinging '{m_name}' (1-token check, ~0 tokens burned)...", flush=True)
+            if not ping_model(client, m_name):
+                print(f"[LLM Probe] '{m_name}' did not answer in 5.0s -> skipped (0 tokens spent on heavy prompt), cascading down...", flush=True)
+                continue
+
+            # 2. Model answered! Send full generation prompt
+            try:
+                print(f"[LLM] '{m_name}' is ALIVE! Generating full basketball plan...", flush=True)
+                response = client.chat.completions.create(
+                    model=m_name,
+                    messages=[
+                        {"role": "system", "content": full_system_instruction},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    max_tokens=2200,
+                )
+                content = response.choices[0].message.content
+                print(f"[LLM] ClaudeHub '{m_name}' SUCCEEDED ({len(content)} chars)", flush=True)
+                parsed_json = extract_and_parse_json(content)
+                return {"source": f"claudehub-api ({m_name})", "data": parsed_json}
+            except Exception as e:
+                print(f"[LLM] Generation on '{m_name}' failed ({type(e).__name__}: {e}) -> falling down cascade...", flush=True)
 
     # Option 2: Gemini API
     if gemini_key and gemini_key != "your_gemini_api_key_here":
