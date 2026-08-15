@@ -99,8 +99,8 @@ SEARCH_DICTIONARY = {
 
 def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") -> str:
     """
-    Searches across ALL 4,400+ pages of all books in the knowledge base.
-    Returns the most relevant full pages (up to 25,000+ characters) for Claude Opus 5.
+    Searches across the indexed pages in the knowledge base.
+    Returns the most relevant pages as context snippets.
     """
     index = load_or_build_index()
     if not index:

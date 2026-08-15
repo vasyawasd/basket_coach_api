@@ -1,17 +1,38 @@
+# Environment & Secrets
 .env
 API.env
 *.env
+
+# Python bytecode & cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Databases & local state
 *.db
 *.db-shm
 *.db-wal
-.claude/
-.claude-flow/
-.swarm/
-.venv/
-users_db.json
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
 *.migrated
+users_db.json
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local cache & state
+.claude/
+.claude-flow/
+.swarm/
+
+

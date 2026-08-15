@@ -14,7 +14,7 @@ import auth
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB max request body to prevent memory exhaustion
 
-# ponytail: VULN-004 fix — restrict CORS to dev / local ports
+# Restrict CORS to dev / local ports
 CORS(
     app,
     resources={r"/*": {"origins": [
@@ -29,7 +29,7 @@ CORS(
 
 @app.after_request
 def set_security_headers(response):
-    """Injects OWASP-recommended HTTP security headers to all responses."""
+    """Injects standard HTTP security headers to all responses."""
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -48,7 +48,7 @@ def set_security_headers(response):
 # In-memory task database for polling
 tasks_db: Dict[str, Dict[str, Any]] = {}
 
-# VULN-005 fix: in-memory rate limiter for auth & plan generation endpoints
+# In-memory rate limiter for auth & plan generation endpoints
 _rate_limit: Dict[str, list] = {}
 RATE_LIMIT_WINDOW = 60   # seconds
 RATE_LIMIT_MAX = 10      # max attempts per window per IP
@@ -285,7 +285,7 @@ def generate_plan():
     task_id = str(uuid.uuid4())
     tasks_db[task_id] = {"status": "processing", "created_at": time.time(), "owner": username}
 
-    # VULN-003 fix: cleanup tasks older than 1 hour
+    # Cleanup tasks older than 1 hour
     now = time.time()
     expired = [t for t, d in tasks_db.items() if d.get("created_at", 0) < now - 3600]
     for t in expired:
@@ -301,7 +301,7 @@ def get_plan_status(task_id: str):
     task = tasks_db.get(task_id)
     if not task:
         return jsonify({"status": "error", "message": "Task not found"})
-    # VULN-007 fix: if task has owner, only owner can view
+    # Verify task ownership if associated with user
     if task.get("owner") and task["owner"] != username:
         return jsonify({"status": "error", "message": "Task not found"})
     return jsonify(task)

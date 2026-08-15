@@ -15,7 +15,7 @@ app = FastAPI(title="Basketball Coach API")
 
 app.add_middleware(
     CORSMiddleware,
-    # ponytail: VULN-004 fix — restrict to local dev; set your domain in prod
+    # Restrict CORS to local development
     allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
@@ -25,7 +25,7 @@ app.add_middleware(
 # In-memory task database for polling
 tasks_db: Dict[str, Dict[str, Any]] = {}
 
-# VULN-005 fix: simple in-memory rate limiter for auth endpoints
+# In-memory rate limiter for auth endpoints
 _rate_limit: Dict[str, list] = {}
 RATE_LIMIT_WINDOW = 60   # seconds
 RATE_LIMIT_MAX = 10      # max attempts per window per IP
@@ -213,13 +213,13 @@ async def generate_plan(params: PlayerParams, username: Optional[str] = Depends(
     task_id = str(uuid.uuid4())
     tasks_db[task_id] = {"status": "processing", "created_at": time.time(), "owner": username}
 
-    # VULN-003 fix: cleanup tasks older than 1 hour
+    # Cleanup tasks older than 1 hour
     now = time.time()
     expired = [t for t, d in tasks_db.items() if d.get("created_at", 0) < now - 3600]
     for t in expired:
         del tasks_db[t]
 
-    # ponytail: thread instead of BackgroundTasks — sync OpenAI client blocks event loop
+    # Run in background thread to avoid blocking
     threading.Thread(target=process_plan_task, args=(task_id, params, username), daemon=True).start()
     return {"status": "processing", "task_id": task_id}
 
@@ -229,7 +229,7 @@ async def get_plan_status(task_id: str, username: Optional[str] = Depends(get_to
     task = tasks_db.get(task_id)
     if not task:
         return {"status": "error", "message": "Task not found"}
-    # VULN-007 fix: if task has owner, only owner can view
+    # Verify task ownership if associated with user
     if task.get("owner") and task["owner"] != username:
         return {"status": "error", "message": "Task not found"}
     return task
