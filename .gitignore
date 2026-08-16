@@ -24,6 +24,10 @@ env/
 *.migrated
 users_db.json
 
+# Generated knowledge base indexes (rebuildable from knowledge_base/ via rag.py)
+kb_index.json
+kb_md_index.json
+
 # IDE & OS
 .idea/
 .vscode/

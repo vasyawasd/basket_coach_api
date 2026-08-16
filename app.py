@@ -1,15 +1,12 @@
 import os
-import uuid
-import threading
-import time
-import datetime
-from typing import Optional, Dict, Any, List, Union
-from flask import Flask, request, jsonify, send_file, make_response
+from typing import Optional
+
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 
-from rag import get_relevant_knowledge, sanitize_input
-from llm_service import call_llm_api
 import auth
+import plan_service
+from rate_limiter import is_rate_limited
 
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB max request body to prevent memory exhaustion
@@ -23,7 +20,7 @@ CORS(
     ]}},
     supports_credentials=True,
     methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"]
+    allow_headers=["Authorization", "Content-Type", "X-Poll-Token"]
 )
 
 
@@ -45,40 +42,16 @@ def set_security_headers(response):
     return response
 
 
-# In-memory task database for polling
-tasks_db: Dict[str, Dict[str, Any]] = {}
-
-# In-memory rate limiter for auth & plan generation endpoints
-_rate_limit: Dict[str, list] = {}
-RATE_LIMIT_WINDOW = 60   # seconds
-RATE_LIMIT_MAX = 10      # max attempts per window per IP
-
-_gen_rate_limit: Dict[str, list] = {}
-GEN_RATE_LIMIT_WINDOW = 3600  # 1 hour
-GEN_RATE_LIMIT_MAX = 30       # max 30 plans per hour per IP
+# Rate limit policies (sliding window, backed by SQLite: survives restarts, multi-worker safe)
+AUTH_RATE_LIMIT = (10, 60)       # 10 auth attempts per minute per IP
+GEN_RATE_LIMIT = (30, 3600)      # 30 plan generations per hour per IP
+POLL_RATE_LIMIT = (120, 60)      # 120 status polls per minute per IP (frontend polls every 3s)
 
 
-def rate_limit_check() -> Optional[tuple]:
-    """Checks whether the client IP has exceeded the auth rate limit."""
-    ip = request.remote_addr or "unknown"
-    now = time.time()
-    attempts = [t for t in _rate_limit.get(ip, []) if t > now - RATE_LIMIT_WINDOW]
-    if len(attempts) >= RATE_LIMIT_MAX:
+def _auth_rate_limited() -> Optional[tuple]:
+    max_attempts, window = AUTH_RATE_LIMIT
+    if is_rate_limited(request.remote_addr or "unknown", "auth", max_attempts, window):
         return jsonify({"detail": "Слишком много попыток входа/регистрации. Попробуйте позже."}), 429
-    attempts.append(now)
-    _rate_limit[ip] = attempts
-    return None
-
-
-def gen_rate_limit_check() -> Optional[tuple]:
-    """Checks whether client IP has exceeded plan generation rate limit."""
-    ip = request.remote_addr or "unknown"
-    now = time.time()
-    attempts = [t for t in _gen_rate_limit.get(ip, []) if t > now - GEN_RATE_LIMIT_WINDOW]
-    if len(attempts) >= GEN_RATE_LIMIT_MAX:
-        return jsonify({"detail": "Превышен лимит генераций планов (максимум 30 в час). Попробуйте позже."}), 429
-    attempts.append(now)
-    _gen_rate_limit[ip] = attempts
     return None
 
 
@@ -99,7 +72,7 @@ def root():
 # Auth Endpoints
 @app.route("/api/register", methods=["POST"])
 def register():
-    rl_error = rate_limit_check()
+    rl_error = _auth_rate_limited()
     if rl_error:
         return rl_error
 
@@ -121,7 +94,7 @@ def register():
 
 @app.route("/api/login", methods=["POST"])
 def login():
-    rl_error = rate_limit_check()
+    rl_error = _auth_rate_limited()
     if rl_error:
         return rl_error
 
@@ -142,6 +115,16 @@ def get_me():
     if not username:
         return jsonify({"authenticated": False})
     return jsonify({"authenticated": True, "username": username})
+
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        auth.logout_user(token)
+    # Idempotent: always success, even with an invalid or missing token
+    return jsonify({"status": "success"})
 
 
 @app.route("/api/history", methods=["GET"])
@@ -170,139 +153,38 @@ def clear_history():
     return jsonify({"status": "success"})
 
 
-def process_plan_task(task_id: str, params: dict, username: Optional[str] = None):
-    """Background task to process RAG and LLM generation (runs in a separate thread)."""
-    try:
-        model_name = params.get("model") or "auto"
-        print(f"[TASK {task_id[:8]}] Starting plan generation (cascade mode: '{model_name}')...")
-
-        clean_position = sanitize_input(params.get("position", ""))
-        goal_val = params.get("goal", "")
-        if isinstance(goal_val, list):
-            clean_goal = ", ".join([sanitize_input(g) for g in goal_val])
-        else:
-            clean_goal = sanitize_input(goal_val)
-        clean_injuries = sanitize_input(params.get("injuries") or "None")
-
-        rag_context = get_relevant_knowledge(
-            goal=clean_goal,
-            injuries=clean_injuries,
-            position=clean_position,
-        )
-
-        system_prompt = (
-            "Ты — элитный баскетбольный тренер по физической и технической подготовке. "
-            "Составь подробную, безопасную и научно обоснованную программу тренировок на русском языке. "
-            "ВНИМАНИЕ: Верни результат СТРОГО в формате JSON со следующей структурой:\n"
-            "{\n"
-            '  "summary": "Краткое резюме фокуса программы",\n'
-            '  "safety_notes": ["Правило техники 1", "Правило 2"],\n'
-            '  "schedule": [\n'
-            "    {\n"
-            '      "day": "День 1",\n'
-            '      "focus": "Фокус тренировки (например: Взрывная сила и плиометрика)",\n'
-            '      "exercises": [\n'
-            '        {\n'
-            '          "name": "Название упражнения",\n'
-            '          "sets": "3-4",\n'
-            '          "reps": "6-8 повторений или 30 сек",\n'
-            '          "notes": "Указания по технике"\n'
-            "        }\n"
-            "      ]\n"
-            "    }\n"
-            "  ]\n"
-            "}"
-        )
-
-        user_prompt = (
-            f"Player parameters:\n"
-            f"- Height: {params.get('height')} cm\n"
-            f"- Weight: {params.get('weight')} kg\n"
-            f"- Position: {clean_position}\n"
-            f"- Goal: {clean_goal}\n"
-            f"- Days per week: {params.get('days_per_week')}\n"
-            f"- Injuries/Limitations: {clean_injuries}"
-        )
-
-        print(f"[TASK {task_id[:8]}] RAG context ready ({len(rag_context)} chars), calling LLM ({model_name})...")
-        llm_result = call_llm_api(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            context_text=rag_context,
-            selected_model=model_name,
-        )
-        print(f"[TASK {task_id[:8]}] LLM returned, source: {llm_result.get('source')}")
-
-        result_payload = {
-            "status": "success",
-            "owner": username,
-            "source": llm_result.get("source"),
-            "rag_context_snippet": rag_context[:300] + ("..." if len(rag_context) > 300 else ""),
-            "data": llm_result.get("data"),
-        }
-
-        tasks_db[task_id] = result_payload
-
-        # If user is authenticated, automatically persist to backend user history
-        if username:
-            now_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-            history_item = {
-                "id": f"plan_{int(datetime.datetime.now().timestamp() * 1000)}",
-                "timestamp": now_str,
-                "payload": params,
-                "apiResult": result_payload
-            }
-            auth.add_user_history_item(username, history_item)
-
-    except Exception as e:
-        print(f"[TASK {task_id[:8]}] FAILED: {type(e).__name__}: {e}")
-        tasks_db[task_id] = {
-            "status": "error",
-            "owner": username,
-            "message": str(e)
-        }
-
-
 @app.route("/generate_plan", methods=["POST"])
 def generate_plan():
-    rl_error = gen_rate_limit_check()
-    if rl_error:
-        return rl_error
+    max_attempts, window = GEN_RATE_LIMIT
+    if is_rate_limited(request.remote_addr or "unknown", "generate", max_attempts, window):
+        return jsonify({"detail": "Превышен лимит генераций планов (максимум 30 в час). Попробуйте позже."}), 429
 
     username = get_token_user()
     data = request.get_json(silent=True) or {}
 
-    # Validation
-    try:
-        height = int(data.get("height", 0))
-        weight = float(data.get("weight", 0))
-        days_per_week = int(data.get("days_per_week", 0))
-        if not (50 < height < 300) or not (30 < weight < 300) or not (1 <= days_per_week <= 7):
-            return jsonify({"detail": "Некорректные параметры игрока."}), 400
-    except (ValueError, TypeError):
-        return jsonify({"detail": "Параметры должны быть числами."}), 400
+    # Validation (shared rules with the FastAPI app)
+    error = plan_service.validate_plan_params(data)
+    if error:
+        return jsonify({"detail": error}), 400
 
-    task_id = str(uuid.uuid4())
-    tasks_db[task_id] = {"status": "processing", "created_at": time.time(), "owner": username}
-
-    # Cleanup tasks older than 1 hour
-    now = time.time()
-    expired = [t for t, d in tasks_db.items() if d.get("created_at", 0) < now - 3600]
-    for t in expired:
-        del tasks_db[t]
-
-    threading.Thread(target=process_plan_task, args=(task_id, data, username), daemon=True).start()
-    return jsonify({"status": "processing", "task_id": task_id})
+    created = plan_service.create_task(data, username)
+    return jsonify({
+        "status": "processing",
+        "task_id": created["task_id"],
+        "poll_token": created["poll_token"],
+    })
 
 
 @app.route("/plan_status/<task_id>", methods=["GET"])
 def get_plan_status(task_id: str):
+    max_attempts, window = POLL_RATE_LIMIT
+    if is_rate_limited(request.remote_addr or "unknown", "poll", max_attempts, window):
+        return jsonify({"detail": "Слишком много запросов статуса. Попробуйте позже."}), 429
+
     username = get_token_user()
-    task = tasks_db.get(task_id)
+    poll_token = request.headers.get("X-Poll-Token") or request.args.get("poll_token")
+    task = plan_service.get_task(task_id, username=username, poll_token=poll_token)
     if not task:
-        return jsonify({"status": "error", "message": "Task not found"})
-    # Verify task ownership if associated with user
-    if task.get("owner") and task["owner"] != username:
         return jsonify({"status": "error", "message": "Task not found"})
     return jsonify(task)
 

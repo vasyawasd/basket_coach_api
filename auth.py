@@ -9,64 +9,36 @@ import json
 import bcrypt
 from typing import Optional, Dict, Any, List
 
-DB_PATH = os.path.realpath(
-    os.path.join(os.path.dirname(__file__), "coach_database.sqlite3")
-)
+from db import get_db_connection
+
 LEGACY_JSON_PATH = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "users_db.json")
 )
 
 SESSION_TTL = 86400  # 24 hours in seconds
+MAX_SESSIONS_PER_USER = 10
+
+# Computed once at import: a bcrypt hash burned on every failed login where the
+# user does not exist, so response time cannot reveal valid usernames.
+_DUMMY_BCRYPT_HASH = bcrypt.hashpw(b"timing-equalizer", bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
-def get_db_connection() -> sqlite3.Connection:
-    """Creates a thread-safe connection to the SQLite database with WAL mode."""
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+def _dummy_password_check(password: str) -> None:
+    bcrypt.checkpw(password.encode("utf-8"), _DUMMY_BCRYPT_HASH.encode("utf-8"))
 
 
-def init_db() -> None:
-    """Initializes the database schema and migrates legacy data if present."""
-    with get_db_connection() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL COLLATE NOCASE,
-                salt TEXT NOT NULL,
-                hash TEXT NOT NULL,
-                created_at REAL NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS sessions (
-                token_hash TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                username TEXT NOT NULL,
-                created_at REAL NOT NULL,
-                expires_at REAL NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS history (
-                id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                timestamp TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                result TEXT NOT NULL,
-                created_at REAL NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-            CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
-            CREATE INDEX IF NOT EXISTS idx_history_user_id ON history(user_id);
-        """)
-
-    # Auto-migrate legacy users_db.json if it exists
-    _migrate_legacy_json()
+def _prune_user_sessions(cur: sqlite3.Cursor, user_id: int) -> None:
+    """Keeps only the most recent MAX_SESSIONS_PER_USER sessions of a user."""
+    cur.execute(
+        """
+        DELETE FROM sessions
+        WHERE user_id = ? AND token_hash NOT IN (
+            SELECT token_hash FROM sessions WHERE user_id = ?
+            ORDER BY created_at DESC LIMIT ?
+        )
+        """,
+        (user_id, user_id, MAX_SESSIONS_PER_USER)
+    )
 
 
 def _migrate_legacy_json() -> None:
@@ -107,8 +79,8 @@ def _migrate_legacy_json() -> None:
         print(f"[DB] Note during legacy migration: {e}")
 
 
-# Initialize tables at module import
-init_db()
+# Run legacy users_db.json migration at module import (schema is created by db.py)
+_migrate_legacy_json()
 
 
 def _hash_token(token: str) -> str:
@@ -177,6 +149,7 @@ def register_user(username: str, password: str) -> Dict[str, Any]:
             "INSERT INTO sessions (token_hash, user_id, username, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
             (token_hash, user_id, clean_username, now, now + SESSION_TTL)
         )
+        _prune_user_sessions(cur, user_id)
 
     return {"username": clean_username, "token": token}
 
@@ -190,7 +163,12 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
         cur.execute("SELECT id, username, salt, hash FROM users WHERE username = ?", (clean_username,))
         row = cur.fetchone()
 
-        if not row or not verify_password(password, row["salt"], row["hash"]):
+        if not row:
+            # Equalize timing with the "user exists + wrong password" path
+            _dummy_password_check(password)
+            raise ValueError("Неверное имя пользователя или пароль.")
+
+        if not verify_password(password, row["salt"], row["hash"]):
             raise ValueError("Неверное имя пользователя или пароль.")
 
         user_id = row["id"]
@@ -201,14 +179,25 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
         token_hash = _hash_token(token)
 
         # Cleanup expired sessions for this user
-        cur.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
+        cur.execute("DELETE FROM sessions WHERE user_id = ? AND expires_at < ?", (user_id, now))
 
         cur.execute(
             "INSERT INTO sessions (token_hash, user_id, username, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
             (token_hash, user_id, actual_username, now, now + SESSION_TTL)
         )
+        _prune_user_sessions(cur, user_id)
 
     return {"username": actual_username, "token": token}
+
+
+def logout_user(token: str) -> bool:
+    """Revokes the session bound to the given token."""
+    if not token:
+        return False
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash_token(token),))
+        return cur.rowcount > 0
 
 
 def get_current_user(token: Optional[str]) -> Optional[str]:

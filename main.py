@@ -1,15 +1,13 @@
-import uuid
-import threading
-import time
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, List, Union
+
 from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from rag import get_relevant_knowledge, sanitize_input
-from llm_service import call_llm_api
 import auth
+import plan_service
+from rate_limiter import is_rate_limited
 
 app = FastAPI(title="Basketball Coach API")
 
@@ -19,27 +17,44 @@ app.add_middleware(
     allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Poll-Token"],
 )
 
-# In-memory task database for polling
-tasks_db: Dict[str, Dict[str, Any]] = {}
 
-# In-memory rate limiter for auth endpoints
-_rate_limit: Dict[str, list] = {}
-RATE_LIMIT_WINDOW = 60   # seconds
-RATE_LIMIT_MAX = 10      # max attempts per window per IP
+@app.middleware("http")
+async def set_security_headers(request: Request, call_next):
+    """Injects standard HTTP security headers to all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self' http://localhost:8000 http://127.0.0.1:8000;"
+    )
+    return response
 
 
-async def rate_limit_check(request: Request):
-    """Dependency that blocks IPs exceeding RATE_LIMIT_MAX auth requests per minute."""
-    ip = request.client.host if request.client else "unknown"
-    now = time.time()
-    attempts = [t for t in _rate_limit.get(ip, []) if t > now - RATE_LIMIT_WINDOW]
-    if len(attempts) >= RATE_LIMIT_MAX:
-        raise HTTPException(status_code=429, detail="Слишком много запросов. Попробуйте позже.")
-    attempts.append(now)
-    _rate_limit[ip] = attempts
+# Rate limit policies (sliding window, backed by SQLite: survives restarts, multi-worker safe)
+AUTH_RATE_LIMIT = (10, 60)       # 10 auth attempts per minute per IP
+GEN_RATE_LIMIT = (30, 3600)      # 30 plan generations per hour per IP
+POLL_RATE_LIMIT = (120, 60)      # 120 status polls per minute per IP (frontend polls every 3s)
+
+
+def _rate_limit_dependency(kind: str, policy: tuple):
+    max_attempts, window = policy
+
+    def check(request: Request):
+        ip = request.client.host if request.client else "unknown"
+        if is_rate_limited(ip, kind, max_attempts, window):
+            raise HTTPException(status_code=429, detail="Слишком много запросов. Попробуйте позже.")
+
+    return check
 
 
 class PlayerParams(BaseModel):
@@ -71,8 +86,13 @@ async def root():
 
 
 # Auth Endpoints
+auth_rate_limit = _rate_limit_dependency("auth", AUTH_RATE_LIMIT)
+gen_rate_limit = _rate_limit_dependency("generate", GEN_RATE_LIMIT)
+poll_rate_limit = _rate_limit_dependency("poll", POLL_RATE_LIMIT)
+
+
 @app.post("/api/register")
-async def register(data: AuthSchema, _=Depends(rate_limit_check)):
+async def register(data: AuthSchema, _=Depends(auth_rate_limit)):
     try:
         res = auth.register_user(data.username, data.password)
         return {"status": "success", "username": res["username"], "token": res["token"]}
@@ -81,7 +101,7 @@ async def register(data: AuthSchema, _=Depends(rate_limit_check)):
 
 
 @app.post("/api/login")
-async def login(data: AuthSchema, _=Depends(rate_limit_check)):
+async def login(data: AuthSchema, _=Depends(auth_rate_limit)):
     try:
         res = auth.login_user(data.username, data.password)
         return {"status": "success", "username": res["username"], "token": res["token"]}
@@ -94,6 +114,15 @@ async def get_me(username: Optional[str] = Depends(get_token_user)):
     if not username:
         return {"authenticated": False}
     return {"authenticated": True, "username": username}
+
+
+@app.post("/api/logout")
+async def logout(authorization: Optional[str] = Header(None)):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        auth.logout_user(token)
+    # Idempotent: always success, even with an invalid or missing token
+    return {"status": "success"}
 
 
 @app.get("/api/history")
@@ -119,117 +148,33 @@ async def clear_history(username: Optional[str] = Depends(get_token_user)):
     return {"status": "success"}
 
 
-def process_plan_task(task_id: str, params: PlayerParams, username: Optional[str] = None):
-    """Background task to process RAG and LLM generation (runs in a separate thread)."""
-    try:
-        print(f"[TASK {task_id[:8]}] Starting plan generation with model '{params.model}'...")
-        clean_position = sanitize_input(params.position)
-        if isinstance(params.goal, list):
-            clean_goal = ", ".join([sanitize_input(g) for g in params.goal])
-        else:
-            clean_goal = sanitize_input(params.goal)
-        clean_injuries = sanitize_input(params.injuries or "None")
-
-        rag_context = get_relevant_knowledge(
-            goal=clean_goal,
-            injuries=clean_injuries,
-            position=clean_position,
-        )
-
-        system_prompt = (
-            "Ты — элитный баскетбольный тренер по физической и технической подготовке. "
-            "Составь подробную, безопасную и научно обоснованную программу тренировок на русском языке. "
-            "ВНИМАНИЕ: Верни результат СТРОГО в формате JSON со следующей структурой:\n"
-            "{\n"
-            '  "summary": "Краткое резюме фокуса программы",\n'
-            '  "safety_notes": ["Правило техники 1", "Правило 2"],\n'
-            '  "schedule": [\n'
-            "    {\n"
-            '      "day": "День 1",\n'
-            '      "focus": "Фокус тренировки (например: Взрывная сила и плиометрика)",\n'
-            '      "exercises": [\n'
-            '        {\n'
-            '          "name": "Название упражнения",\n'
-            '          "sets": "3-4",\n'
-            '          "reps": "6-8 повторений или 30 сек",\n'
-            '          "notes": "Указания по технике"\n'
-            "        }\n"
-            "      ]\n"
-            "    }\n"
-            "  ]\n"
-            "}"
-        )
-
-        user_prompt = (
-            f"Player parameters:\n"
-            f"- Height: {params.height} cm\n"
-            f"- Weight: {params.weight} kg\n"
-            f"- Position: {clean_position}\n"
-            f"- Goal: {clean_goal}\n"
-            f"- Days per week: {params.days_per_week}\n"
-            f"- Injuries/Limitations: {clean_injuries}"
-        )
-
-        print(f"[TASK {task_id[:8]}] RAG context ready ({len(rag_context)} chars), calling LLM ({params.model})...")
-        llm_result = call_llm_api(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            context_text=rag_context,
-            selected_model=params.model,
-        )
-        print(f"[TASK {task_id[:8]}] LLM returned, source: {llm_result.get('source')}")
-
-        result_payload = {
-            "status": "success",
-            "source": llm_result.get("source"),
-            "rag_context_snippet": rag_context[:300] + ("..." if len(rag_context) > 300 else ""),
-            "data": llm_result.get("data"),
-        }
-
-        tasks_db[task_id] = result_payload
-
-        # If user is authenticated, automatically persist to backend user history
-        if username:
-            import datetime
-            now_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-            history_item = {
-                "id": f"plan_{int(datetime.datetime.now().timestamp() * 1000)}",
-                "timestamp": now_str,
-                "payload": params.dict(),
-                "apiResult": result_payload
-            }
-            auth.add_user_history_item(username, history_item)
-
-    except Exception as e:
-        print(f"[TASK {task_id[:8]}] FAILED: {type(e).__name__}: {e}")
-        tasks_db[task_id] = {
-            "status": "error",
-            "message": str(e)
-        }
-
-
 @app.post("/generate_plan")
-async def generate_plan(params: PlayerParams, username: Optional[str] = Depends(get_token_user)):
-    task_id = str(uuid.uuid4())
-    tasks_db[task_id] = {"status": "processing", "created_at": time.time(), "owner": username}
+async def generate_plan(
+    params: PlayerParams,
+    username: Optional[str] = Depends(get_token_user),
+    _=Depends(gen_rate_limit),
+):
+    # Extra shared rules beyond Pydantic bounds (field length caps)
+    error = plan_service.validate_plan_params(params.dict())
+    if error:
+        raise HTTPException(status_code=400, detail=error)
 
-    # Cleanup tasks older than 1 hour
-    now = time.time()
-    expired = [t for t, d in tasks_db.items() if d.get("created_at", 0) < now - 3600]
-    for t in expired:
-        del tasks_db[t]
-
-    # Run in background thread to avoid blocking
-    threading.Thread(target=process_plan_task, args=(task_id, params, username), daemon=True).start()
-    return {"status": "processing", "task_id": task_id}
+    created = plan_service.create_task(params.dict(), username)
+    return {
+        "status": "processing",
+        "task_id": created["task_id"],
+        "poll_token": created["poll_token"],
+    }
 
 
 @app.get("/plan_status/{task_id}")
-async def get_plan_status(task_id: str, username: Optional[str] = Depends(get_token_user)):
-    task = tasks_db.get(task_id)
+async def get_plan_status(
+    task_id: str,
+    username: Optional[str] = Depends(get_token_user),
+    x_poll_token: Optional[str] = Header(None, alias="X-Poll-Token"),
+    _=Depends(poll_rate_limit),
+):
+    task = plan_service.get_task(task_id, username=username, poll_token=x_poll_token)
     if not task:
-        return {"status": "error", "message": "Task not found"}
-    # Verify task ownership if associated with user
-    if task.get("owner") and task["owner"] != username:
         return {"status": "error", "message": "Task not found"}
     return task

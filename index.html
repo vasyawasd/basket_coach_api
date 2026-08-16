@@ -1095,7 +1095,7 @@
 
                     <div class="form-group">
                         <label for="injuries">Травмы / Ограничения</label>
-                        <input type="text" id="injuries" placeholder="Например: Боль в колене, нет" value="Нет">
+                        <input type="text" id="injuries" maxlength="500" placeholder="Например: Боль в колене, нет" value="Нет">
                     </div>
 
                     <input type="hidden" id="selected_model" value="auto">
@@ -1296,7 +1296,18 @@
             }
         });
 
-        logoutBtn.addEventListener('click', () => {
+        logoutBtn.addEventListener('click', async () => {
+            // Revoke the session server-side before clearing local state
+            if (authToken) {
+                try {
+                    await fetch('/api/logout', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                } catch (err) {
+                    console.warn('Logout request failed:', err);
+                }
+            }
             authToken = null;
             authUsername = null;
             localStorage.removeItem('hoop_pro_token');
@@ -1459,9 +1470,13 @@
                 if (initData.status === 'processing' && initData.task_id) {
                     // Start polling
                     const taskId = initData.task_id;
+                    const pollHeaders = {};
+                    if (initData.poll_token) {
+                        pollHeaders['X-Poll-Token'] = initData.poll_token;
+                    }
                     const pollInterval = setInterval(async () => {
                         try {
-                            const pollResponse = await fetch(`/plan_status/${taskId}`);
+                            const pollResponse = await fetch(`/plan_status/${taskId}`, { headers: pollHeaders });
                             const pollData = await pollResponse.json();
 
                             if (pollData.status === 'success') {

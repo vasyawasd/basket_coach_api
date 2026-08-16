@@ -1,7 +1,11 @@
 import json
 import os
 import re
-from typing import Dict, List
+import time
+from array import array
+from bisect import bisect_left
+from collections import Counter
+from typing import Dict, List, Tuple
 import pypdf
 
 BASE_KB_DIR = os.path.realpath(
@@ -14,8 +18,10 @@ INDEX_FILE_PATH = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "kb_index.json")
 )
 
-# In-memory index cache
+# In-memory caches: page index and the inverted term index built from it
 _FULL_PAGE_INDEX: List[Dict] = []
+_TERM_POSTINGS: Dict[str, array] = {}   # term -> flat [entry_idx, count, ...] pairs
+_SORTED_VOCAB: List[str] = []           # sorted terms, for prefix expansion via bisect
 
 
 def sanitize_input(text: str) -> str:
@@ -97,14 +103,72 @@ SEARCH_DICTIONARY = {
 }
 
 
+def _build_term_index() -> None:
+    """
+    Builds an inverted index (term -> [(page, count)]) once at first search.
+    Replaces a per-request linear scan with lowercase + substring counting
+    over ~9 MB of text, which dominated request latency.
+    """
+    global _TERM_POSTINGS, _SORTED_VOCAB
+
+    index = load_or_build_index()
+    started = time.time()
+    postings: Dict[str, Dict[int, int]] = {}
+
+    for entry_idx, entry in enumerate(index):
+        word_counts = Counter(re.findall(r"\w+", entry["text"].lower()))
+        for term, cnt in word_counts.items():
+            postings.setdefault(term, {})[entry_idx] = cnt
+
+    # array('i') keeps memory compact: 2 ints per (page, count) pair
+    _TERM_POSTINGS = {
+        term: array("i", [v for pair in pages.items() for v in pair])
+        for term, pages in postings.items()
+    }
+    _SORTED_VOCAB = sorted(_TERM_POSTINGS)
+    print(
+        f"[RAG] Inverted index built: {len(_SORTED_VOCAB)} terms over {len(index)} pages "
+        f"in {time.time() - started:.1f}s",
+        flush=True
+    )
+
+
+def _term_postings(term: str) -> Tuple[int, ...]:
+    """Returns flat (page_idx, count, ...) pairs for the exact term."""
+    arr = _TERM_POSTINGS.get(term)
+    return tuple(arr) if arr else ()
+
+
+def _prefix_postings(term: str) -> Tuple[int, ...]:
+    """
+    Collects postings of all vocabulary terms starting with the given prefix
+    (the exact term included). Preserves most of the old substring-match
+    recall (jump -> jumps/jumping) at a fraction of the cost.
+    """
+    pages: Dict[int, int] = {}
+    i = bisect_left(_SORTED_VOCAB, term)
+    while i < len(_SORTED_VOCAB) and _SORTED_VOCAB[i].startswith(term):
+        arr = _TERM_POSTINGS[_SORTED_VOCAB[i]]
+        for j in range(0, len(arr), 2):
+            pages[arr[j]] = pages.get(arr[j], 0) + arr[j + 1]
+        i += 1
+    flat: List[int] = []
+    for pair in pages.items():
+        flat.extend(pair)
+    return tuple(flat)
+
+
 def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") -> str:
     """
-    Searches across the indexed pages in the knowledge base.
+    Searches the inverted term index of the knowledge base.
     Returns the most relevant pages as context snippets.
     """
     index = load_or_build_index()
     if not index:
         return "База знаний доступна по 8 книгам."
+
+    if not _TERM_POSTINGS:
+        _build_term_index()
 
     clean_goal = sanitize_input(goal).lower()
     clean_injuries = sanitize_input(injuries).lower()
@@ -122,25 +186,22 @@ def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") ->
     if not search_terms:
         search_terms = {"basketball", "strength", "jump", "knee", "squat"}
 
-    # Score every single page across all 4,400+ pages
-    scored_pages = []
-    for entry in index:
-        text_lower = entry["text"].lower()
-        score = 0
-        for term in search_terms:
-            count = text_lower.count(term)
-            score += count * (3 if len(term) > 4 else 1)
+    # Accumulate weighted scores per page via postings lists
+    scores: Dict[int, int] = {}
+    for term in search_terms:
+        weight = 3 if len(term) > 4 else 1
+        # Prefix expansion for terms long enough to be meaningful, exact match otherwise
+        postings = _prefix_postings(term) if len(term) >= 3 else _term_postings(term)
+        for k in range(0, len(postings), 2):
+            page_idx = postings[k]
+            scores[page_idx] = scores.get(page_idx, 0) + postings[k + 1] * weight
 
-        if score > 0:
-            scored_pages.append((score, entry))
-
-    scored_pages.sort(key=lambda x: x[0], reverse=True)
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
     # Take TOP 4 most relevant pages
-    top_entries = [entry for score, entry in scored_pages[:4]]
-
     snippets = []
-    for entry in top_entries:
+    for page_idx, _score in ranked[:4]:
+        entry = index[page_idx]
         header = f"=== [{entry['book']}] ==="
         snippets.append(f"{header}\n{entry['text'][:900].strip()}")
 

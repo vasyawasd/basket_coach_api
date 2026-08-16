@@ -10,7 +10,7 @@ load_dotenv("API.env")
 from openai import OpenAI
 
 key = os.getenv("CLAUDEHUB_API_KEY")
-print(f"Key: {key[:10]}...{key[-4:]}")
+print(f"Key configured: {bool(key)}")
 
 client = OpenAI(api_key=key, base_url="https://api.claudehub.fun/v1", timeout=30)
 
