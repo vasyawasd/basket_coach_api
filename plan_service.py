@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import threading
 import time
@@ -11,9 +12,15 @@ from typing import Any, Dict, Optional
 from db import get_db_connection
 from rag import get_relevant_knowledge, sanitize_input
 from llm_service import call_llm_api
+from metrics import log_event
 import auth
 
 TASK_TTL_SECONDS = 3600  # finished/abandoned tasks are purged after 1 hour
+
+# Daily generation quotas (rolling 24h). Protect the LLM API budget:
+# anonymous users are capped hard, registered accounts get a higher tier.
+ANON_DAILY_LIMIT = int(os.environ.get("ANON_DAILY_LIMIT", "3"))
+USER_DAILY_LIMIT = int(os.environ.get("USER_DAILY_LIMIT", "15"))
 
 # Field length caps shared by both Flask and FastAPI entrypoints
 MAX_POSITION_LEN = 50
@@ -21,6 +28,7 @@ MAX_INJURIES_LEN = 500
 MAX_MODEL_LEN = 50
 MAX_GOAL_ITEM_LEN = 200
 MAX_GOAL_TOTAL_LEN = 600
+MAX_FEEDBACK_LEN = 600
 
 
 def validate_plan_params(params: Dict[str, Any]) -> Optional[str]:
@@ -58,6 +66,34 @@ def validate_plan_params(params: Dict[str, Any]) -> Optional[str]:
     elif not isinstance(goal, str) or not (1 <= len(goal) <= MAX_GOAL_ITEM_LEN):
         return "Некорректно указана цель тренировки."
 
+    feedback = params.get("feedback")
+    if feedback is not None and (not isinstance(feedback, str) or len(feedback) > MAX_FEEDBACK_LEN):
+        return "Слишком длинный фидбек (максимум 600 символов)."
+
+    return None
+
+
+def check_daily_quota(username: Optional[str], client_ip: Optional[str]) -> Optional[str]:
+    """Rolling 24h generation quota; returns a Russian error message or None."""
+    day_ago = time.time() - 86400
+    with get_db_connection() as conn:
+        if username:
+            used = conn.execute(
+                "SELECT COUNT(*) FROM plan_tasks WHERE owner = ? AND created_at > ?",
+                (username, day_ago)
+            ).fetchone()[0]
+            if used >= USER_DAILY_LIMIT:
+                return f"Дневной лимит генераций ({USER_DAILY_LIMIT} в сутки) исчерпан. Попробуйте завтра."
+        elif client_ip:
+            used = conn.execute(
+                "SELECT COUNT(*) FROM plan_tasks WHERE client_ip = ? AND owner IS NULL AND created_at > ?",
+                (client_ip, day_ago)
+            ).fetchone()[0]
+            if used >= ANON_DAILY_LIMIT:
+                return (
+                    f"Дневной лимит бесплатных генераций ({ANON_DAILY_LIMIT} в сутки) исчерпан. "
+                    "Зарегистрируйтесь, чтобы получать больше планов, или попробуйте завтра."
+                )
     return None
 
 SYSTEM_PROMPT = (
@@ -117,7 +153,7 @@ def _hash_poll_token(poll_token: str) -> str:
     return hashlib.sha256(poll_token.encode("utf-8")).hexdigest()
 
 
-def create_task(params: Dict[str, Any], username: Optional[str] = None) -> Dict[str, str]:
+def create_task(params: Dict[str, Any], username: Optional[str] = None, client_ip: Optional[str] = None) -> Dict[str, str]:
     """
     Persists a new plan task in SQLite and starts background processing.
     Returns the task_id plus a one-time poll_token that grants polling access
@@ -131,10 +167,14 @@ def create_task(params: Dict[str, Any], username: Optional[str] = None) -> Dict[
         cur = conn.cursor()
         cur.execute("DELETE FROM plan_tasks WHERE created_at < ?", (now - TASK_TTL_SECONDS,))
         cur.execute(
-            "INSERT INTO plan_tasks (task_id, status, owner, poll_token_hash, result, created_at) "
-            "VALUES (?, 'processing', ?, ?, NULL, ?)",
-            (task_id, username, _hash_poll_token(poll_token), now)
+            "INSERT INTO plan_tasks (task_id, status, owner, poll_token_hash, result, client_ip, created_at) "
+            "VALUES (?, 'processing', ?, ?, NULL, ?, ?)",
+            (task_id, username, _hash_poll_token(poll_token), client_ip, now)
         )
+
+    log_event("plan_requested", subject=username or client_ip,
+              meta={"model": params.get("model") or "auto", "ip": client_ip,
+                    "adapted": bool(params.get("feedback"))})
 
     threading.Thread(target=process_plan_task, args=(task_id, params, username), daemon=True).start()
     return {"task_id": task_id, "poll_token": poll_token}
@@ -183,6 +223,7 @@ def get_task(task_id: str, username: Optional[str] = None, poll_token: Optional[
 
 def process_plan_task(task_id: str, params: Dict[str, Any], username: Optional[str] = None):
     """Background task to process RAG and LLM generation (runs in a separate thread)."""
+    started = time.time()
     try:
         model_name = params.get("model") or "auto"
         print(f"[TASK {task_id[:8]}] Starting plan generation (cascade mode: '{model_name}')...", flush=True)
@@ -195,6 +236,13 @@ def process_plan_task(task_id: str, params: Dict[str, Any], username: Optional[s
         )
 
         user_prompt = build_user_prompt(params, clean)
+        feedback = sanitize_input(params.get("feedback") or "")
+        if feedback:
+            user_prompt += (
+                f"\n\nATHLETE FEEDBACK FROM THE PREVIOUS WEEK:\n- {feedback}\n"
+                "Use this feedback to adapt the program (adjust volume, intensity, "
+                "exercise selection)."
+            )
 
         print(f"[TASK {task_id[:8]}] RAG context ready ({len(rag_context)} chars), calling LLM ({model_name})...", flush=True)
         llm_result = call_llm_api(
@@ -203,6 +251,7 @@ def process_plan_task(task_id: str, params: Dict[str, Any], username: Optional[s
             context_text=rag_context,
             selected_model=model_name,
         )
+        usage = llm_result.pop("_usage", {})
         print(f"[TASK {task_id[:8]}] LLM returned, source: {llm_result.get('source')}", flush=True)
 
         result_payload = {
@@ -211,9 +260,17 @@ def process_plan_task(task_id: str, params: Dict[str, Any], username: Optional[s
             "source": llm_result.get("source"),
             "rag_context_snippet": rag_context[:300] + ("..." if len(rag_context) > 300 else ""),
             "data": llm_result.get("data"),
+            "adapted": bool(feedback),
         }
 
         _save_task_result(task_id, result_payload)
+        log_event("plan_completed", subject=username, meta={
+            "source": llm_result.get("source"),
+            "duration_s": round(time.time() - started, 1),
+            "tokens_prompt": usage.get("prompt_tokens", 0),
+            "tokens_completion": usage.get("completion_tokens", 0),
+            "adapted": bool(feedback),
+        })
 
         # If user is authenticated, automatically persist to backend user history
         if username:
@@ -233,4 +290,8 @@ def process_plan_task(task_id: str, params: Dict[str, Any], username: Optional[s
             "status": "error",
             "owner": username,
             "message": "Внутренняя ошибка при генерации плана. Попробуйте позже."
+        })
+        log_event("plan_failed", subject=username, meta={
+            "error_type": type(e).__name__,
+            "duration_s": round(time.time() - started, 1),
         })

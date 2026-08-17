@@ -77,18 +77,30 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
 
     # Option 1: ClaudeHub API with Ping Probes (All top models included)
     if claudehub_key and claudehub_key != "your_claudehub_api_key_here":
-        # Full descending quality hierarchy
-        cascade_hierarchy = [
-            "claude-opus-5",        # 1. Flagship Opus 5
-            "claude-sonnet-5",      # 2. High quality Anthropic Sonnet 5
-            "qwen3.8-max-preview",  # 3. Flagship Next-Gen Preview
-            "qwen3.7-max",          # 4. Ultra-reliable Max model
+        # 'auto' tries budget models first (cheap Qwen/DeepSeek), escalating to
+        # premium only if cheaper ones are down; premium is used when picked explicitly.
+        budget_hierarchy = [
+            "qwen3.5-flash",        # 1. Ultra-lightweight & lowest token cost
+            "deepseek-v4-flash",    # 2. Fast & economical DeepSeek v4 Flash
+            "deepseek-v4-pro",      # 3. High-intelligence DeepSeek v4 Pro
+            "claude-sonnet-5",      # 4. Premium fallback
+            "claude-opus-5",        # 5. Flagship fallback
         ]
+        premium_hierarchy = [
+            "claude-opus-5",        # 1. Flagship Opus 5
+            "claude-sonnet-5",      # 2. High quality Sonnet 5
+            "deepseek-v4-pro",      # 3. High-intelligence DeepSeek v4 Pro
+            "deepseek-v4-flash",    # 4. Fast & economical DeepSeek v4 Flash
+            "qwen3.5-flash",        # 5. Ultra-lightweight & lowest token cost
+        ]
+        all_models = set(budget_hierarchy) | set(premium_hierarchy)
 
-        if selected_model and selected_model != "auto" and selected_model in cascade_hierarchy:
-            candidates = [selected_model]
+        if selected_model and selected_model != "auto":
+            candidates = [selected_model] if selected_model in all_models else budget_hierarchy
+        elif os.getenv("LLM_AUTO_STRATEGY", "budget") == "premium":
+            candidates = premium_hierarchy
         else:
-            candidates = cascade_hierarchy
+            candidates = budget_hierarchy
 
         from openai import OpenAI
         import httpx
@@ -122,7 +134,12 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
                 content = response.choices[0].message.content
                 print(f"[LLM] ClaudeHub '{m_name}' SUCCEEDED ({len(content)} chars)", flush=True)
                 parsed_json = extract_and_parse_json(content)
-                return {"source": f"claudehub-api ({m_name})", "data": parsed_json}
+                usage = getattr(response, "usage", None)
+                usage_info = {
+                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                    "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                }
+                return {"source": f"claudehub-api ({m_name})", "data": parsed_json, "_usage": usage_info}
             except Exception as e:
                 print(f"[LLM] Generation on '{m_name}' failed ({type(e).__name__}: {e}) -> falling down cascade...", flush=True)
 
@@ -142,7 +159,12 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
                 generation_config={"response_mime_type": "application/json"},
             )
             parsed_json = extract_and_parse_json(response.text)
-            return {"source": f"gemini-api ({model_name})", "data": parsed_json}
+            usage_meta = getattr(response, "usage_metadata", None)
+            usage_info = {
+                "prompt_tokens": getattr(usage_meta, "prompt_token_count", 0) or 0,
+                "completion_tokens": getattr(usage_meta, "candidates_token_count", 0) or 0,
+            }
+            return {"source": f"gemini-api ({model_name})", "data": parsed_json, "_usage": usage_info}
         except Exception as e:
             print(f"Gemini API call failed ({model_name}): {type(e).__name__}: {e}")
 
@@ -164,7 +186,12 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
             )
             content = response.choices[0].message.content
             parsed_json = extract_and_parse_json(content)
-            return {"source": f"openai-api ({model_name})", "data": parsed_json}
+            usage = getattr(response, "usage", None)
+            usage_info = {
+                "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
+            }
+            return {"source": f"openai-api ({model_name})", "data": parsed_json, "_usage": usage_info}
         except Exception as e:
             print(f"OpenAI API call failed ({model_name}): {type(e).__name__}: {e}")
 

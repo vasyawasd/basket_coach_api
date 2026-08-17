@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hoop Pro AI — персональные тренировочные программы по баскетболу</title>
+    <meta name="description" content="ИИ-тренер по баскетболу: персональные программы тренировок на основе методической базы знаний — с учётом вашей позиции, целей и травм.">
+    <style>
+        :root {
+            --bg: #0d0d1a;
+            --card: rgba(255, 255, 255, 0.05);
+            --accent: #ff7a1a;
+            --accent2: #00c2ff;
+            --text: #f0f0f5;
+            --muted: #9a9ab0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: radial-gradient(ellipse at top, #1a1a2e 0%, var(--bg) 60%);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+        nav { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
+        .logo { font-size: 1.3rem; font-weight: 800; }
+        .logo span { color: var(--accent); }
+        .cta-btn {
+            display: inline-block; background: linear-gradient(135deg, var(--accent), #ff5e3a);
+            color: #fff; text-decoration: none; font-weight: 700; padding: 12px 28px;
+            border-radius: 12px; transition: transform 0.15s;
+        }
+        .cta-btn:hover { transform: translateY(-2px); }
+        .hero { text-align: center; padding: 70px 0 50px; }
+        .hero h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.15; margin-bottom: 18px; }
+        .hero h1 em { font-style: normal; color: var(--accent); }
+        .hero p { color: var(--muted); font-size: 1.15rem; max-width: 640px; margin: 0 auto 32px; }
+        .hero-badge {
+            display: inline-block; background: var(--card); border: 1px solid rgba(255,255,255,0.12);
+            padding: 6px 16px; border-radius: 999px; font-size: 0.85rem; color: var(--accent2); margin-bottom: 22px;
+        }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; padding: 30px 0 60px; }
+        .card {
+            background: var(--card); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px;
+            padding: 28px; backdrop-filter: blur(8px);
+        }
+        .card .icon { font-size: 2rem; margin-bottom: 12px; }
+        .card h3 { margin-bottom: 10px; font-size: 1.1rem; }
+        .card p { color: var(--muted); font-size: 0.95rem; }
+        .steps { padding: 20px 0 60px; }
+        .steps h2, .faq h2 { text-align: center; font-size: 1.8rem; margin-bottom: 36px; }
+        .step { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 24px; }
+        .step-num {
+            flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent2), #0088ff); display: flex;
+            align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem;
+        }
+        .faq { padding: 20px 0 60px; }
+        .faq-item { background: var(--card); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
+        .faq-item h3 { font-size: 1rem; margin-bottom: 8px; }
+        .faq-item p { color: var(--muted); font-size: 0.93rem; }
+        .final-cta { text-align: center; padding: 40px 0 80px; }
+        .final-cta h2 { font-size: 2rem; margin-bottom: 24px; }
+        footer { border-top: 1px solid rgba(255,255,255,0.08); padding: 26px 0; color: var(--muted); font-size: 0.85rem; text-align: center; }
+        footer a { color: var(--accent2); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <div class="logo">🏀 Hoop<span>Pro</span> AI</div>
+            <a class="cta-btn" href="/">Открыть приложение</a>
+        </nav>
+
+        <section class="hero">
+            <div class="hero-badge">Бета — генерации бесплатны</div>
+            <h1>Персональный ИИ-тренер <em>по баскетболу</em></h1>
+            <p>Программа тренировок, построенная на методической базе знаний по физподготовке — не «из головы нейросети», а с опорой на конкретную литературу. С учётом вашей позиции, целей и травм.</p>
+            <a class="cta-btn" href="/">Составить программу бесплатно →</a>
+        </section>
+
+        <section class="grid">
+            <div class="card">
+                <div class="icon">📚</div>
+                <h3>Опора на базу знаний</h3>
+                <p>RAG-поиск по методическим материалам: система находит релевантные страницы книг и передаёт их модели как контекст. План обоснован источниками.</p>
+            </div>
+            <div class="card">
+                <div class="icon">🩹</div>
+                <h3>Учёт травм и ограничений</h3>
+                <p>Укажите боли и ограничения — программа подстроит нагрузку и подбор упражнений, а раздел безопасности напомнит о технике.</p>
+            </div>
+            <div class="card">
+                <div class="icon">🔁</div>
+                <h3>Живая адаптация</h3>
+                <p>Неделя прошла — расскажите, как дела. ИИ пересоберёт программу с учётом фидбека: объёма, интенсивности и самочувствия.</p>
+            </div>
+            <div class="card">
+                <div class="icon">📄</div>
+                <h3>PDF и история</h3>
+                <p>Скачивайте готовый план в PDF или TXT, храните все программы в личной истории и возвращайтесь к ним в любой момент.</p>
+            </div>
+            <div class="card">
+                <div class="icon">🛡️</div>
+                <h3>Приватность по умолчанию</h3>
+                <p>Пароли — bcrypt, сессии — отзывные, никаких данных третьим сторонам. Ваш аккаунт и история — только ваши.</p>
+            </div>
+            <div class="card">
+                <div class="icon">⚡</div>
+                <h3>Каскад моделей</h3>
+                <p>Несколько LLM в резерве: если одна недоступна, план соберёт другая. Вы не остаётесь без программы.</p>
+            </div>
+        </section>
+
+        <section class="steps">
+            <h2>Как это работает</h2>
+            <div class="step"><div class="step-num">1</div><div><h3>Заполните профиль игрока</h3><p style="color:var(--muted)">Рост, вес, позиция на площадке, количество тренировочных дней в неделю, цели и травмы.</p></div></div>
+            <div class="step"><div class="step-num">2</div><div><h3>ИИ ищет в базе знаний</h3><p style="color:var(--muted)">Система находит самые релевантные методические материалы под ваши цели и ограничения.</p></div></div>
+            <div class="step"><div class="step-num">3</div><div><h3>Получаете программу</h3><p style="color:var(--muted)">По дням, с упражнениями, подходами, повторами и правилами техники. Скачивайте и тренируйтесь.</p></div></div>
+        </section>
+
+        <section class="faq">
+            <h2>Частые вопросы</h2>
+            <div class="faq-item"><h3>Это бесплатно?</h3><p>В бете — да, с дневным лимитом генераций. Регистрация даёт больше планов в сутки.</p></div>
+            <div class="faq-item"><h3>Чем это лучше просто спросить ChatGPT?</h3><p>План строится с опорой на методическую базу знаний по подготовке баскетболистов, с фиксированной структурой результата, адаптацией по фидбеку и историей программ.</p></div>
+            <div class="faq-item"><h3>У меня болит колено — мне подойдёт?</h3><p>Укажите ограничение в форме — программа учтёт его при подборе упражнений. Но это не замена консультации врача.</p></div>
+        </section>
+
+        <section class="final-cta">
+            <h2>Готовы к первому плану?</h2>
+            <a class="cta-btn" href="/">Составить программу →</a>
+        </section>
+
+        <footer>
+            Hoop Pro AI · Не является медицинской консультацией · <a href="/">Приложение</a>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,13 @@
+services:
+  coach-api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - API.env
+    environment:
+      - TRUSTED_PROXY=1
+      - COACH_DB_PATH=/data/coach_database.sqlite3
+    volumes:
+      - ./coach_data:/data
+    restart: unless-stopped

@@ -1100,6 +1100,14 @@
 
                     <input type="hidden" id="selected_model" value="auto">
 
+                    <div class="form-group" id="feedbackGroup" style="display:none;">
+                        <label for="plan_feedback">🔁 Фидбек для адаптации плана</label>
+                        <textarea id="plan_feedback" maxlength="600" rows="3"
+                            style="width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:10px 12px; color:inherit; font-family:inherit; font-size:0.92rem; resize:vertical; box-sizing:border-box;"
+                            placeholder="Как прошла неделя? Что далось тяжело, что легко, есть ли боли, что хочется добавить..."></textarea>
+                        <p style="font-size:0.78rem; color:var(--text-muted); margin-top:4px;">ИИ пересоберёт программу с учётом вашего фидбека.</p>
+                    </div>
+
                     <button type="submit" class="btn-generate" id="submitBtn">
                         <span>⚡ Сгенерировать Программу</span>
                     </button>
@@ -1133,14 +1141,24 @@
                         <div class="source-badge" id="sourceBadge" style="margin-bottom:0;">
                             <span>✨ Движок:</span>
                             <strong id="sourceName">Claude Sonnet 5</strong>
+                            <span id="adaptedBadge" style="display:none; margin-left:8px; background:rgba(255,122,26,0.15); color:var(--accent-orange); padding:2px 10px; border-radius:999px; font-size:0.78rem; font-weight:700;">🔁 Адаптирован</span>
                         </div>
                     </div>
 
                     <div class="schedule-grid" id="scheduleGrid"></div>
 
-                    <button type="button" class="btn-download-txt" id="downloadTxtBtn">
-                        <span>📄 Скачать план в .TXT</span>
-                    </button>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button type="button" class="btn-download-txt" id="adaptPlanBtn"
+                            style="background:linear-gradient(135deg, #ff7a1a, #ff5e3a); color:#fff; border:none;">
+                            <span>🔁 Адаптировать план</span>
+                        </button>
+                        <button type="button" class="btn-download-txt" id="downloadPdfBtn">
+                            <span>📄 Скачать PDF</span>
+                        </button>
+                        <button type="button" class="btn-download-txt" id="downloadTxtBtn">
+                            <span>📄 Скачать план в .TXT</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1387,6 +1405,7 @@
         validateGoals();
 
         let lastApiResult = null;
+        let lastPayload = null;
 
         // Form Submit Handler
         const form = document.getElementById('coachForm');
@@ -1445,6 +1464,12 @@
                 injuries: document.getElementById('injuries').value || "Нет",
                 model: selectedModel
             };
+            const feedbackField = document.getElementById('plan_feedback');
+            const feedbackVal = feedbackField ? feedbackField.value.trim() : '';
+            if (feedbackVal) {
+                payload.feedback = feedbackVal;
+            }
+            lastPayload = payload;
 
             // Switch UI to Loading
             placeholderState.style.display = 'none';
@@ -1484,6 +1509,10 @@
                                 stopProgressTicker();
                                 lastApiResult = pollData;
 
+                                // Show/hide "Adapted" badge based on server response
+                                const badge = document.getElementById('adaptedBadge');
+                                if (badge) badge.style.display = pollData.adapted ? 'inline-block' : 'none';
+
                                 // Save locally if guest
                                 if (!authToken) {
                                     addPlanToLocalHistory(payload, pollData);
@@ -1495,6 +1524,11 @@
                                     renderSchedule(pollData);
                                 } catch (renderErr) {
                                     console.error('Render error:', renderErr);
+                                }
+                                // Reset the adaptation feedback field after use
+                                if (feedbackField) {
+                                    feedbackField.value = '';
+                                    document.getElementById('feedbackGroup').style.display = 'none';
                                 }
                                 loaderState.style.display = 'none';
                                 submitBtn.disabled = false;
@@ -1802,6 +1836,46 @@
 
         downloadTxtBtn.addEventListener('click', downloadPlanAsTxt);
 
+        // Adapt plan: reveal the feedback field and focus the form
+        document.getElementById('adaptPlanBtn').addEventListener('click', () => {
+            const fg = document.getElementById('feedbackGroup');
+            fg.style.display = 'block';
+            document.getElementById('coachForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => document.getElementById('plan_feedback').focus(), 400);
+        });
+
+        // Server-side branded PDF export
+        document.getElementById('downloadPdfBtn').addEventListener('click', async () => {
+            if (!lastApiResult || !lastApiResult.data) {
+                alert('Нет данных для скачивания.');
+                return;
+            }
+            try {
+                const res = await fetch('/api/pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payload: lastPayload || {}, apiResult: lastApiResult })
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.detail || 'Ошибка при создании PDF.');
+                    return;
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'basket_training_plan.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
+            } catch (e) {
+                console.error('PDF export error:', e);
+                alert('Сбой соединения при создании PDF.');
+            }
+        });
+
         // History Storage & Manager
         const HISTORY_KEY = 'hoop_pro_history_v1';
         const historyList = document.getElementById('historyList');
@@ -1916,6 +1990,7 @@
 
                 itemDiv.querySelector('.btn-hist-load').addEventListener('click', () => {
                     lastApiResult = item.apiResult;
+                    lastPayload = item.payload || null;
                     placeholderState.style.display = 'none';
                     loaderState.style.display = 'none';
                     try {

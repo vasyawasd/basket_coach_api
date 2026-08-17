@@ -1,12 +1,16 @@
+import hmac
+import os
 from typing import Optional, List, Union
 
 from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 import auth
+import metrics
 import plan_service
+from pdf_export import generate_plan_pdf
 from rate_limiter import is_rate_limited
 
 app = FastAPI(title="Basketball Coach API")
@@ -44,6 +48,20 @@ async def set_security_headers(request: Request, call_next):
 AUTH_RATE_LIMIT = (10, 60)       # 10 auth attempts per minute per IP
 GEN_RATE_LIMIT = (30, 3600)      # 30 plan generations per hour per IP
 POLL_RATE_LIMIT = (120, 60)      # 120 status polls per minute per IP (frontend polls every 3s)
+PDF_RATE_LIMIT = (20, 60)        # 20 PDF exports per minute per IP
+
+
+def _client_ip(request: Request) -> str:
+    """
+    Client IP for quotas/limits. X-Forwarded-For is honored only behind an
+    explicitly trusted reverse proxy (TRUSTED_PROXY=1) to prevent spoofing.
+    """
+    remote = request.client.host if request.client else "unknown"
+    if os.environ.get("TRUSTED_PROXY") == "1":
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[0].strip()
+    return remote
 
 
 def _rate_limit_dependency(kind: str, policy: tuple):
@@ -65,6 +83,7 @@ class PlayerParams(BaseModel):
     days_per_week: int = Field(..., ge=1, le=7, description="Training days per week")
     injuries: Optional[str] = Field(None, max_length=500, description="Existing injuries or limitations")
     model: Optional[str] = Field("qwen3.8-max-preview", max_length=50, description="Selected AI Model")
+    feedback: Optional[str] = Field(None, max_length=600, description="Athlete feedback for plan adaptation")
 
 
 class AuthSchema(BaseModel):
@@ -95,6 +114,7 @@ poll_rate_limit = _rate_limit_dependency("poll", POLL_RATE_LIMIT)
 async def register(data: AuthSchema, _=Depends(auth_rate_limit)):
     try:
         res = auth.register_user(data.username, data.password)
+        metrics.log_event("register", subject=res["username"])
         return {"status": "success", "username": res["username"], "token": res["token"]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -104,6 +124,7 @@ async def register(data: AuthSchema, _=Depends(auth_rate_limit)):
 async def login(data: AuthSchema, _=Depends(auth_rate_limit)):
     try:
         res = auth.login_user(data.username, data.password)
+        metrics.log_event("login", subject=res["username"])
         return {"status": "success", "username": res["username"], "token": res["token"]}
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
@@ -151,6 +172,7 @@ async def clear_history(username: Optional[str] = Depends(get_token_user)):
 @app.post("/generate_plan")
 async def generate_plan(
     params: PlayerParams,
+    request: Request,
     username: Optional[str] = Depends(get_token_user),
     _=Depends(gen_rate_limit),
 ):
@@ -159,7 +181,12 @@ async def generate_plan(
     if error:
         raise HTTPException(status_code=400, detail=error)
 
-    created = plan_service.create_task(params.dict(), username)
+    # Daily quota (protects the LLM API budget)
+    quota_error = plan_service.check_daily_quota(username, _client_ip(request))
+    if quota_error:
+        raise HTTPException(status_code=429, detail=quota_error)
+
+    created = plan_service.create_task(params.dict(), username, client_ip=_client_ip(request))
     return {
         "status": "processing",
         "task_id": created["task_id"],
@@ -178,3 +205,43 @@ async def get_plan_status(
     if not task:
         return {"status": "error", "message": "Task not found"}
     return task
+
+
+class PdfExportSchema(BaseModel):
+    payload: dict = {}
+    apiResult: dict
+
+
+pdf_rate_limit = _rate_limit_dependency("pdf", PDF_RATE_LIMIT)
+
+
+@app.post("/api/pdf")
+async def export_pdf(data: PdfExportSchema, _=Depends(pdf_rate_limit)):
+    """Renders a generated plan as a branded PDF (client sends the plan JSON)."""
+    if not data.apiResult.get("data"):
+        raise HTTPException(status_code=400, detail="Нет данных плана для экспорта.")
+    try:
+        pdf_bytes = generate_plan_pdf(data.payload, data.apiResult)
+    except Exception as e:
+        print(f"[PDF] Export failed: {type(e).__name__}: {e}", flush=True)
+        raise HTTPException(status_code=500, detail="Не удалось создать PDF.")
+    metrics.log_event("pdf_exported")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=training_plan.pdf"},
+    )
+
+
+@app.get("/api/admin/stats")
+async def admin_stats(x_admin_token: Optional[str] = Header(None)):
+    """Product metrics endpoint, guarded by ADMIN_TOKEN (404 unless configured)."""
+    admin_token = os.environ.get("ADMIN_TOKEN")
+    if not admin_token or not hmac.compare_digest(admin_token, x_admin_token or ""):
+        raise HTTPException(status_code=404, detail="Not found")
+    return metrics.get_stats()
+
+
+@app.get("/landing", response_class=FileResponse)
+async def landing():
+    return FileResponse("landing.html")

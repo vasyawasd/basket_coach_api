@@ -2,7 +2,8 @@ import os
 import sqlite3
 
 DB_PATH = os.path.realpath(
-    os.path.join(os.path.dirname(__file__), "coach_database.sqlite3")
+    os.environ.get("COACH_DB_PATH")
+    or os.path.join(os.path.dirname(__file__), "coach_database.sqlite3")
 )
 
 
@@ -19,6 +20,12 @@ def get_db_connection() -> sqlite3.Connection:
 def init_db() -> None:
     """Initializes the database schema shared by auth, plan tasks and rate limiting."""
     with get_db_connection() as conn:
+        # Migration for databases created before client_ip tracking existed
+        # (must run before the index statements below reference the column)
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(plan_tasks)")]
+        if columns and "client_ip" not in columns:
+            conn.execute("ALTER TABLE plan_tasks ADD COLUMN client_ip TEXT")
+
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +60,16 @@ def init_db() -> None:
                 owner TEXT,
                 poll_token_hash TEXT,
                 result TEXT,
+                client_ip TEXT,
                 created_at REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                subject TEXT,
+                meta TEXT,
+                ts REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS rate_limit_hits (
@@ -66,6 +82,9 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
             CREATE INDEX IF NOT EXISTS idx_history_user_id ON history(user_id);
             CREATE INDEX IF NOT EXISTS idx_plan_tasks_created_at ON plan_tasks(created_at);
+            CREATE INDEX IF NOT EXISTS idx_plan_tasks_ip ON plan_tasks(client_ip, created_at);
+            CREATE INDEX IF NOT EXISTS idx_plan_tasks_owner ON plan_tasks(owner, created_at);
+            CREATE INDEX IF NOT EXISTS idx_events_kind_ts ON events(kind, ts);
             CREATE INDEX IF NOT EXISTS idx_rate_limit_lookup ON rate_limit_hits(ip, kind, ts);
         """)
 

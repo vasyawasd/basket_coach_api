@@ -23,6 +23,9 @@ env/
 *.sqlite3-shm
 *.migrated
 users_db.json
+coach_data/
+app.log*
+*.log
 
 # Generated knowledge base indexes (rebuildable from knowledge_base/ via rag.py)
 kb_index.json

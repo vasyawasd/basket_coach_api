@@ -1,0 +1,16 @@
+.venv/
+.git/
+.claude/
+.claude-flow/
+.swarm/
+__pycache__/
+*.pyc
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.log
+API.env
+users_db.json*
+kb_index.json
+app.log*
