@@ -96,11 +96,11 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
         all_models = set(budget_hierarchy) | set(premium_hierarchy)
 
         if selected_model and selected_model != "auto":
-            candidates = [selected_model] if selected_model in all_models else budget_hierarchy
-        elif os.getenv("LLM_AUTO_STRATEGY", "budget") == "premium":
-            candidates = premium_hierarchy
-        else:
+            candidates = [selected_model] if selected_model in all_models else premium_hierarchy
+        elif os.getenv("LLM_AUTO_STRATEGY", "premium") == "budget":
             candidates = budget_hierarchy
+        else:
+            candidates = premium_hierarchy
 
         from openai import OpenAI
         import httpx
