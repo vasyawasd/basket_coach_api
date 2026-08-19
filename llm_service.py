@@ -87,8 +87,8 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
             "claude-opus-5",        # 5. Flagship fallback
         ]
         premium_hierarchy = [
-            "claude-opus-5",        # 1. Flagship Opus 5
-            "claude-sonnet-5",      # 2. High quality Sonnet 5
+            "claude-sonnet-5",      # 1. Primary working flagship (fast 2.8s ping, 7s full generation)
+            "claude-opus-5",        # 2. Flagship Opus 5
             "deepseek-v4-pro",      # 3. High-intelligence DeepSeek v4 Pro
             "deepseek-v4-flash",    # 4. Fast & economical DeepSeek v4 Flash
             "qwen3.5-flash",        # 5. Ultra-lightweight & lowest token cost

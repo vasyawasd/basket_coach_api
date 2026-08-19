@@ -75,7 +75,7 @@ def test_full_system():
         "goal": ["🚀 Прыжок и вертикальный взрыв (Vertical Jump)", "⚡ Дриблинг и контроль мяча (Dribble & Ball Handling)"],
         "days_per_week": 4,
         "injuries": "Нет",
-        "model": "claude-opus-5"
+        "model": "auto"
     }
 
     headers = {"Authorization": f"Bearer {login_token}"}
