@@ -68,7 +68,7 @@ def _rate_limit_dependency(kind: str, policy: tuple):
     max_attempts, window = policy
 
     def check(request: Request):
-        ip = request.client.host if request.client else "unknown"
+        ip = _client_ip(request)
         if is_rate_limited(ip, kind, max_attempts, window):
             raise HTTPException(status_code=429, detail="Слишком много запросов. Попробуйте позже.")
 

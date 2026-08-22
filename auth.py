@@ -20,11 +20,13 @@ MAX_SESSIONS_PER_USER = 10
 
 # Computed once at import: a bcrypt hash burned on every failed login where the
 # user does not exist, so response time cannot reveal valid usernames.
-_DUMMY_BCRYPT_HASH = bcrypt.hashpw(b"timing-equalizer", bcrypt.gensalt(rounds=12)).decode("utf-8")
+_DUMMY_PREHASH = hashlib.sha256(b"dummy_salt:timing-equalizer").digest()
+_DUMMY_BCRYPT_HASH = bcrypt.hashpw(_DUMMY_PREHASH, bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 def _dummy_password_check(password: str) -> None:
-    bcrypt.checkpw(password.encode("utf-8"), _DUMMY_BCRYPT_HASH.encode("utf-8"))
+    prehash = hashlib.sha256(f"dummy_salt:{password}".encode("utf-8")).digest()
+    bcrypt.checkpw(prehash, _DUMMY_BCRYPT_HASH.encode("utf-8"))
 
 
 def _prune_user_sessions(cur: sqlite3.Cursor, user_id: int) -> None:

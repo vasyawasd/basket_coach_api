@@ -10,8 +10,10 @@ __pycache__/
 *.sqlite3-wal
 *.db
 *.log
+.env
 API.env
+*.env
 users_db.json*
 kb_index.json
 app.log*
-
+coach_data/

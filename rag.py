@@ -18,17 +18,24 @@ INDEX_FILE_PATH = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "kb_index.json")
 )
 
+import threading
+
 # In-memory caches: page index and the inverted term index built from it
 _FULL_PAGE_INDEX: List[Dict] = []
 _TERM_POSTINGS: Dict[str, array] = {}   # term -> flat [entry_idx, count, ...] pairs
 _SORTED_VOCAB: List[str] = []           # sorted terms, for prefix expansion via bisect
+_INDEX_LOCK = threading.Lock()
 
 
 def sanitize_input(text: str) -> str:
-    """Sanitizes user input string to prevent control character injection."""
+    """Sanitizes user input string to prevent control character and Unicode injection."""
     if not text:
         return ""
-    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", str(text)).strip()
+    # Strip dangerous ASCII control chars
+    clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", str(text))
+    # Strip invisible/zero-width and direction override Unicode characters
+    clean = re.sub(r"[\u200B-\u200D\uFEFF\u202A-\u202E]", "", clean)
+    return clean.strip()
 
 
 def load_or_build_index() -> List[Dict]:
@@ -168,7 +175,9 @@ def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") ->
         return "База знаний доступна по 8 книгам."
 
     if not _TERM_POSTINGS:
-        _build_term_index()
+        with _INDEX_LOCK:
+            if not _TERM_POSTINGS:
+                _build_term_index()
 
     clean_goal = sanitize_input(goal).lower()
     clean_injuries = sanitize_input(injuries).lower()

@@ -34,8 +34,16 @@ def _register_fonts() -> Optional[Tuple[str, str]]:
     return None
 
 
+import html
+
+
 def _txt(v: Any) -> str:
-    return str(v) if v is not None and str(v).strip() else "—"
+    if v is None:
+        return "—"
+    text = str(v).strip()
+    if not text:
+        return "—"
+    return html.escape(text, quote=True)
 
 
 def generate_plan_pdf(payload: Dict[str, Any], api_result: Dict[str, Any]) -> bytes:

@@ -2,7 +2,7 @@ services:
   coach-api:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - API.env
     environment:
@@ -11,4 +11,3 @@ services:
     volumes:
       - ./coach_data:/data
     restart: unless-stopped
-
