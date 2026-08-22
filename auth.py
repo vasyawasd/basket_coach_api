@@ -314,3 +314,4 @@ def clear_user_history(username: str) -> bool:
             (username,)
         )
         return True
+

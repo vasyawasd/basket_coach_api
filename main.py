@@ -245,3 +245,4 @@ async def admin_stats(x_admin_token: Optional[str] = Header(None)):
 @app.get("/landing", response_class=FileResponse)
 async def landing():
     return FileResponse("landing.html")
+

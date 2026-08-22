@@ -208,3 +208,4 @@ def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") ->
     full_context = "\n\n".join(snippets)
     # Return up to 4,000 characters of concentrated scientific context (fast & token-efficient)
     return full_context[:4000]
+

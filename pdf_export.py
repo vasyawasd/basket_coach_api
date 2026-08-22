@@ -128,3 +128,4 @@ def generate_plan_pdf(payload: Dict[str, Any], api_result: Dict[str, Any]) -> by
 
     doc.build(story)
     return buf.getvalue()
+

@@ -84,3 +84,4 @@ def get_stats() -> Dict[str, Any]:
         "models_last_30d": sources,
         "generations_per_day": [{"date": r["day"], "plans": r["cnt"]} for r in daily_rows],
     }
+

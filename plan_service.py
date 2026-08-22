@@ -295,3 +295,4 @@ def process_plan_task(task_id: str, params: Dict[str, Any], username: Optional[s
             "error_type": type(e).__name__,
             "duration_s": round(time.time() - started, 1),
         })
+

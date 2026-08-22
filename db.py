@@ -91,3 +91,4 @@ def init_db() -> None:
 
 # Initialize tables at module import
 init_db()
+

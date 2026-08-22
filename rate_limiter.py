@@ -37,3 +37,4 @@ def is_rate_limited(ip: str, kind: str, max_attempts: int, window_seconds: int) 
             )
 
     return False
+
