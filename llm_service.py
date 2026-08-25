@@ -80,18 +80,20 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
         # 'auto' tries budget models first (cheap Qwen/DeepSeek), escalating to
         # premium only if cheaper ones are down; premium is used when picked explicitly.
         budget_hierarchy = [
-            "qwen3.5-flash",        # 1. Ultra-lightweight & lowest token cost
-            "deepseek-v4-flash",    # 2. Fast & economical DeepSeek v4 Flash
-            "deepseek-v4-pro",      # 3. High-intelligence DeepSeek v4 Pro
-            "claude-sonnet-5",      # 4. Premium fallback
-            "claude-opus-5",        # 5. Flagship fallback
+            "claude-sonnet-4.6",    # 1. Ultra-fast (5.2s) & 100% Strict JSON
+            "gpt-5.6-terra",        # 2. Fast GPT flagship (8.5s)
+            "gemini-3.7-flash",     # 3. Super-fast frontier model (9.9s)
+            "claude-haiku-4.5",     # 4. Fast reliable lightweight Claude
+            "glm-5.2",              # 5. Robust multi-discipline fallback
         ]
         premium_hierarchy = [
-            "claude-sonnet-5",      # 1. Primary working flagship (fast 2.8s ping, 7s full generation)
-            "claude-opus-5",        # 2. Flagship Opus 5
-            "deepseek-v4-pro",      # 3. High-intelligence DeepSeek v4 Pro
-            "deepseek-v4-flash",    # 4. Fast & economical DeepSeek v4 Flash
-            "qwen3.5-flash",        # 5. Ultra-lightweight & lowest token cost
+            "claude-sonnet-4.6",    # 1. Top speed & 100% Strict JSON (5.2s)
+            "claude-opus-4.8",      # 2. Elite height & biomechanics specialist (6.3s)
+            "claude-opus-5",        # 3. Apex reasoning & reactive plyometrics (7.0s)
+            "gpt-5.6-terra",        # 4. Premier OpenAI GPT flagship (8.5s)
+            "gemini-3.7-flash",     # 5. High-speed Google frontier model (9.9s)
+            "gpt-5.5",              # 6. Deep basketball game-situation specialist (17.6s)
+            "glm-5.2",              # 7. Comprehensive 19-exercise backup (16.3s)
         ]
         all_models = set(budget_hierarchy) | set(premium_hierarchy)
 
@@ -110,7 +112,7 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
             api_key=claudehub_key,
             base_url=base_url,
             max_retries=0,
-            timeout=httpx.Timeout(55.0, connect=6.0, read=55.0),
+            timeout=httpx.Timeout(40.0, connect=6.0, read=40.0),
         )
 
         for m_name in candidates:
