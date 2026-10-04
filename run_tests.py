@@ -12,7 +12,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://127.0.0.1:8000"
 PROJECT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -24,7 +24,7 @@ def ensure_server():
     """
     try:
         r = requests.get(f"{BASE_URL}/api/me", timeout=1.0)
-        if r.status_code == 200:
+        if r.status_code in (200, 401):
             print("[*] Reusing existing server running on port 8000")
             return None, False
     except Exception:
@@ -47,7 +47,7 @@ def ensure_server():
             raise RuntimeError(f"Server process terminated unexpectedly with code {proc.returncode}")
         try:
             r = requests.get(f"{BASE_URL}/api/me", timeout=1.0)
-            if r.status_code == 200:
+            if r.status_code in (200, 401):
                 print(f"[*] Server ready in {time.time()-start:.2f}s!")
                 return proc, True
         except Exception:
