@@ -94,19 +94,83 @@ def load_or_build_index() -> List[Dict]:
     return _FULL_PAGE_INDEX
 
 
-# Synonyms and domain dictionary for cross-language matching (Russian <-> English)
+# Synonyms and domain dictionary for cross-language matching (Russian <-> English) across all 16 books
 SEARCH_DICTIONARY = {
-    "прыжок": ["jump", "vertical", "plyometric", "plyo", "explosive", "bounce", "power"],
-    "взрыв": ["explosive", "rate of force", "rfd", "power", "eccentric", "concentric"],
-    "сила": ["strength", "squat", "deadlift", "load", "1rm", "hypertrophy", "power"],
-    "колено": ["knee", "patellar", "tendon", "tendinopathy", "quadriceps", "vmo", "spanish squat"],
-    "тендинопатия": ["tendinopathy", "tendon", "continuum", "isometric", "eccentric", "load management"],
-    "сустав": ["joint", "rehab", "mobility", "ankle", "hip", "stiffness"],
+    # Базовые двигательные качества и биомеханика
+    "прыж": ["jump", "vertical", "plyometric", "plyo", "explosive", "bounce", "power", "countermovement", "cmj"],
+    "взрыв": ["explosive", "rate of force", "rfd", "power", "eccentric", "concentric", "velocity"],
+    "сил": ["strength", "squat", "deadlift", "load", "1rm", "hypertrophy", "power", "hsr"],
+    "вынослив": ["endurance", "conditioning", "hiit", "aerobic", "stamina", "repeat sprint"],
     "дриблинг": ["dribble", "dribbling", "ball handling", "control", "crossover", "skills"],
     "бросок": ["shooting", "jumper", "form", "mechanics", "release", "field goal"],
-    "выносливость": ["endurance", "conditioning", "hiit", "aerobic", "stamina"],
-    "питание": ["dietary", "protein", "calories", "nutrition", "hydration", "recovery"],
-    "защита": ["defense", "defensive", "slide", "agility", "lateral", "shuttle"]
+    "защит": ["defense", "defensive", "slide", "agility", "lateral", "shuttle"],
+    
+    # Колено, сухожилия и связочный аппарат
+    "колен": ["knee", "patellar", "tendon", "tendinopathy", "quadriceps", "vmo", "spanish squat", "retro", "breda"],
+    "тендинопати": ["tendinopathy", "tendon", "continuum", "isometric", "eccentric", "hsr", "retro", "load management"],
+    "сухожил": ["tendon", "tendinopathy", "retro", "breda", "hsr", "isometric", "malliaras", "patellar"],
+    "сустав": ["joint", "rehab", "mobility", "ankle", "hip", "stiffness", "joint by joint"],
+    "связк": ["ligament", "acl", "atfl", "cfl", "graft", "laxity", "valgus", "пкс"],
+    "крестообразн": ["acl", "пкс", "anterior cruciate ligament", "hewett", "valgus", "sportsmetrics"],
+    "пкс": ["acl", "anterior cruciate ligament", "hewett", "valgus", "ligament dominance", "крестообразн", "sportsmetrics"],
+    "acl": ["acl", "пкс", "anterior cruciate ligament", "hewett", "valgus", "sportsmetrics", "rotational"],
+    "вальгус": ["valgus", "dynamic valgus", "knee collapse", "acl", "trunk dominance", "hip abductor"],
+    
+    # Торможение, децелерация и COD (Блок 9)
+    "тормож": ["deceleration", "braking", "cod", "change of direction", "stopping", "plant step", "pfc", "penultimate"],
+    "децелер": ["deceleration", "braking", "eccentric", "cod", "pfc", "harper", "flywheel", "stopping"],
+    "смен": ["change of direction", "cod", "agility", "cutting", "505", "deficits", "pfc", "plant step"],
+    "cod": ["cod", "deceleration", "change of direction", "cutting", "nimphius", "harper", "505", "pfc", "торможение", "децелерация"],
+    "5-0-5": ["505", "cod", "change of direction", "agility", "deficit", "deceleration"],
+    
+    # Возврат в спорт (RTS) и шкала контактов (Блок 10)
+    "rts": ["rts", "return to sport", "допуск", "критерии допуска", "bern", "hop test", "lsi", "clearance"],
+    "возврат": ["return to sport", "rts", "clearance", "hop test", "lsi", "kyritsis", "допуск"],
+    "допуск": ["clearance", "return to sport", "rts", "lsi", "hop test", "criteria"],
+    "плиометр": ["plyometric", "plyo", "stretch shortening cycle", "ssc", "depth jump", "pogo", "drop jump", "contacts"],
+    "retro": ["retro", "breda", "tendon", "hsr", "heavy slow resistance", "isometric"],
+    
+    # Инструментальный мониторинг, тензоплатформы и VBT (Блок 11)
+    "vbt": ["vbt", "velocity", "mean propulsive velocity", "mpv", "loss cutoff", "тензоплатформа", "скорость штанги"],
+    "тензоплатформ": ["force plates", "force plate", "cmj", "rsimod", "braking rfd", "asymmetry", "dual force"],
+    "force plate": ["force plates", "тензоплатформа", "cmj", "rsimod", "impulse", "braking rfd"],
+    "cmj": ["cmj", "countermovement jump", "rsimod", "unweighting", "braking", "propulsion", "тензоплатформа"],
+    "скорост": ["velocity", "vbt", "mpv", "speed", "acceleration", "rfd"],
+    
+    # Женский баскетбол и синдром RED-S (Блок 12)
+    "red-s": ["reds", "red-s", "energy availability", "triad", "триада", "дефицит энергии", "leaf", "mountjoy"],
+    "reds": ["reds", "red-s", "energy availability", "триада", "дефицит энергии"],
+    "дефицит энерги": ["red-s", "energy availability", "amenorrhea", "bone density", "остеопения", "триада"],
+    "женск": ["female", "red-s", "acl", "hewett", "sportsmetrics", "вальгус", "триада"],
+    
+    # Голеностоп (CAI) и пах (Doha) (Блок 13)
+    "голеностоп": ["ankle", "cai", "sprain", "atfl", "dorsiflexion", "mulligan", "дорсифлексия", "таранная", "подворот"],
+    "cai": ["cai", "chronic ankle instability", "голеностоп", "atfl", "cfl", "инверсия", "нестабильность"],
+    "нестабильност": ["instability", "cai", "ankle", "balance", "airex", "proprioception"],
+    "дорсифлекс": ["dorsiflexion", "ankle mobility", "mulligan", "glide", "колено к стене", "таранная"],
+    "пах": ["groin", "doha", "adductor", "copenhagen", "приводящие", "squeeze test", "симфиз"],
+    "doha": ["doha", "groin", "adductor", "copenhagen", "пах", "доха", "weir"],
+    "приводящ": ["adductor", "copenhagen", "doha", "groin", "паховые"],
+    "copenhagen": ["copenhagen", "adductor", "groin", "haroy", "doha", "приводящие"],
+    "peace": ["peace love", "rehab", "acute injury", "отказ от нпвп", "протокол"],
+    
+    # Юношеский баскетбол, LTAD и арбитраж (Блок 14)
+    "ltad": ["ltad", "long term athlete development", "ypd", "phv", "ростовой скачок", "подростки", "юноши"],
+    "ypd": ["ypd", "youth physical development", "ltad", "lloyd", "oliver", "phv"],
+    "юнош": ["youth", "ltad", "ypd", "phv", "апофизит", "осгуд", "подростк"],
+    "подростк": ["youth", "adolescent", "phv", "ltad", "ростовой скачок", "апофизит"],
+    "осгуд": ["osgood", "osgood-schlatter", "apophysitis", "апофизит", "бугристость", "ростовой"],
+    "апофизит": ["apophysitis", "osgood", "sinding", "larsen", "traction", "рост", "запрет перегрузок"],
+    "арбитраж": ["arbitration", "consensus", "hierarchy", "старшинство", "правило", "мета-анализ"],
+    
+    # Питание ISSN и микроцикл Гриффина (Блок 8 и План)
+    "питани": ["dietary", "protein", "calories", "nutrition", "hydration", "recovery", "issn"],
+    "issn": ["issn", "nutrition", "creatine", "protein", "supplements", "добавки", "спортивное питание"],
+    "добавк": ["supplements", "creatine", "caffeine", "beta-alanine", "bcaa", "issn"],
+    "креатин": ["creatine", "monohydrate", "loading", "performance", "issn"],
+    "гриффин": ["griffin", "blake griffin", "микроцикл", "программа", "3-дневный", "комбо-форвард"],
+    "микроцикл": ["microcycle", "mesocycle", "3-day", "периодизация", "план тренировок"],
+    "испанск": ["spanish squat", "isometric", "analgesia", "patellar", "коленный сустав"]
 }
 
 
@@ -114,7 +178,7 @@ def _build_term_index() -> None:
     """
     Builds an inverted index (term -> [(page, count)]) once at first search.
     Replaces a per-request linear scan with lowercase + substring counting
-    over ~9 MB of text, which dominated request latency.
+    over text, which dominated request latency.
     """
     global _TERM_POSTINGS, _SORTED_VOCAB
 
@@ -172,7 +236,7 @@ def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") ->
     """
     index = load_or_build_index()
     if not index:
-        return "База знаний доступна по 8 книгам."
+        return "База знаний доступна по 16 книгам (Блоки 1–14, План Гриффина, Научные статьи)."
 
     if not _TERM_POSTINGS:
         with _INDEX_LOCK:
@@ -187,6 +251,13 @@ def get_relevant_knowledge(goal: str, injuries: str = "", position: str = "") ->
 
     # Build search terms list
     search_terms = set(re.findall(r"\w+", combined_input))
+
+    # Morphological normalization for Russian wordforms (strip typical suffixes/cases)
+    for term in list(search_terms):
+        if len(term) >= 5 and re.search(r"[а-яё]", term):
+            stem = re.sub(r"(ая|ой|ый|ий|ое|ее|ые|ие|ах|ях|ам|ям|ов|ев|ом|ем|ами|ями|ия|ии|ей|ью|ет|ют|ут|ят)$", "", term)
+            if len(stem) >= 3:
+                search_terms.add(stem)
 
     for ru_term, en_synonyms in SEARCH_DICTIONARY.items():
         if ru_term in combined_input:

@@ -1,11 +1,60 @@
+import os
+import subprocess
 import sys
-sys.stdout.reconfigure(encoding="utf-8")
-
 import time
 import requests
 import auth
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 BASE_URL = "http://localhost:8000"
+PROJECT_DIR = os.path.dirname(os.path.realpath(__file__))
+
+
+def ensure_server():
+    """
+    Ensures the web server is running on BASE_URL.
+    If not running, automatically spawns app.py as a child process and waits for ready.
+    Returns (process_or_None, bool_we_started_it).
+    """
+    try:
+        r = requests.get(f"{BASE_URL}/api/me", timeout=1.0)
+        if r.status_code == 200:
+            print("[*] Reusing existing server running on port 8000")
+            return None, False
+    except Exception:
+        pass
+
+    print("[*] Starting local server (app.py) for test execution...", flush=True)
+    env = os.environ.copy()
+    proc = subprocess.Popen(
+        [sys.executable, "app.py"],
+        cwd=PROJECT_DIR,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Wait for server to become responsive
+    start = time.time()
+    for _ in range(30):
+        if proc.poll() is not None:
+            raise RuntimeError(f"Server process terminated unexpectedly with code {proc.returncode}")
+        try:
+            r = requests.get(f"{BASE_URL}/api/me", timeout=1.0)
+            if r.status_code == 200:
+                print(f"[*] Server ready in {time.time()-start:.2f}s!")
+                return proc, True
+        except Exception:
+            time.sleep(0.4)
+
+    proc.terminate()
+    raise TimeoutError("Server did not become ready within 12 seconds")
 
 
 def test_full_system():
@@ -135,5 +184,14 @@ def test_full_system():
 
 
 if __name__ == "__main__":
-    test_full_system()
-
+    proc, started_by_us = ensure_server()
+    try:
+        test_full_system()
+    finally:
+        if started_by_us and proc:
+            print("[*] Terminating auto-started test server...")
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()

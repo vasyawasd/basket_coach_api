@@ -21,7 +21,7 @@ app.add_middleware(
     allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "X-Poll-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-Poll-Token", "X-Admin-Token"],
 )
 
 
@@ -55,12 +55,16 @@ def _client_ip(request: Request) -> str:
     """
     Client IP for quotas/limits. X-Forwarded-For is honored only behind an
     explicitly trusted reverse proxy (TRUSTED_PROXY=1) to prevent spoofing.
+    Prioritizes direct proxy headers, falls back to the last untrusted hop in XFF.
     """
     remote = request.client.host if request.client else "unknown"
     if os.environ.get("TRUSTED_PROXY") == "1":
+        real_ip = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip.strip()
         xff = request.headers.get("X-Forwarded-For", "")
         if xff:
-            return xff.split(",")[0].strip()
+            return xff.split(",")[-1].strip()
     return remote
 
 
@@ -82,7 +86,7 @@ class PlayerParams(BaseModel):
     goal: Union[str, List[str]] = Field(..., description="Training goal or list of goals")
     days_per_week: int = Field(..., ge=1, le=7, description="Training days per week")
     injuries: Optional[str] = Field(None, max_length=500, description="Existing injuries or limitations")
-    model: Optional[str] = Field("qwen3.8-max-preview", max_length=50, description="Selected AI Model")
+    model: Optional[str] = Field("auto", max_length=50, description="Selected AI Model")
     feedback: Optional[str] = Field(None, max_length=600, description="Athlete feedback for plan adaptation")
 
 

@@ -1,5 +1,7 @@
 """Server-side PDF export of generated training plans (Cyrillic-capable)."""
+import html
 import io
+import os
 from typing import Any, Dict, Optional, Tuple
 
 from reportlab.lib import colors
@@ -8,42 +10,55 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-# First available Cyrillic font wins: DejaVu (Linux/Docker) or Arial (Windows)
+# Cyrillic font candidates across Windows, Linux, and macOS
 _FONT_CANDIDATES = [
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
+    ("/usr/share/fonts/dejavu/DejaVuSans.ttf",
+     "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+    ("C:\\Windows\\Fonts\\arial.ttf",
+     "C:\\Windows\\Fonts\\arialbd.ttf"),
+    ("/Library/Fonts/Arial.ttf",
+     "/Library/Fonts/Arial Bold.ttf"),
+    ("/System/Library/Fonts/Supplemental/Arial.ttf",
+     "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
 ]
 
 _ACCENT = colors.HexColor("#ff7a1a")
 _HEADER_BG = colors.HexColor("#1a1a2e")
 _MUTED = colors.HexColor("#666666")
 
+_FONTS_REGISTERED = False
+
 
 def _register_fonts() -> Optional[Tuple[str, str]]:
+    global _FONTS_REGISTERED
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
+    if _FONTS_REGISTERED or "PlanFont" in pdfmetrics.getRegisteredFontNames():
+        return "PlanFont", "PlanFont-Bold"
+
     for regular, bold in _FONT_CANDIDATES:
-        try:
-            pdfmetrics.registerFont(TTFont("PlanFont", regular))
-            pdfmetrics.registerFont(TTFont("PlanFont-Bold", bold))
-            return "PlanFont", "PlanFont-Bold"
-        except Exception:
-            continue
+        if os.path.exists(regular) and os.path.exists(bold):
+            try:
+                pdfmetrics.registerFont(TTFont("PlanFont", regular))
+                pdfmetrics.registerFont(TTFont("PlanFont-Bold", bold))
+                _FONTS_REGISTERED = True
+                return "PlanFont", "PlanFont-Bold"
+            except Exception:
+                continue
     return None
 
 
-import html
-
-
 def _txt(v: Any) -> str:
+    """Escapes XML entities and preserves line breaks for ReportLab Paragraphs."""
     if v is None:
         return "—"
     text = str(v).strip()
     if not text:
         return "—"
-    return html.escape(text, quote=True)
+    return html.escape(text, quote=True).replace("\n", "<br/>")
 
 
 def generate_plan_pdf(payload: Dict[str, Any], api_result: Dict[str, Any]) -> bytes:
@@ -57,8 +72,8 @@ def generate_plan_pdf(payload: Dict[str, Any], api_result: Dict[str, Any]) -> by
         "h2": ParagraphStyle("h2", fontName=font_bold, fontSize=13, textColor=_ACCENT,
                              spaceBefore=12, spaceAfter=6),
         "body": ParagraphStyle("body", fontName=font, fontSize=10, leading=14),
-        "cell": ParagraphStyle("cell", fontName=font, fontSize=9, leading=12),
-        "cellb": ParagraphStyle("cellb", fontName=font_bold, fontSize=9, leading=12),
+        "cell": ParagraphStyle("cell", fontName=font, fontSize=9, leading=12, wordWrap="CJK"),
+        "cellb": ParagraphStyle("cellb", fontName=font_bold, fontSize=9, leading=12, wordWrap="CJK"),
     }
 
     buf = io.BytesIO()
@@ -69,7 +84,7 @@ def generate_plan_pdf(payload: Dict[str, Any], api_result: Dict[str, Any]) -> by
     data = api_result.get("data") or {}
     p = payload or {}
 
-    story.append(Paragraph("🏀 HOOP PRO AI — Программа тренировок", styles["title"]))
+    story.append(Paragraph("HOOP PRO AI — Программа тренировок", styles["title"]))
     params_line = " · ".join(filter(None, [
         f"{_txt(p.get('height'))} см" if p.get("height") else None,
         f"{_txt(p.get('weight'))} кг" if p.get("weight") else None,
@@ -99,8 +114,10 @@ def generate_plan_pdf(payload: Dict[str, Any], api_result: Dict[str, Any]) -> by
         if not isinstance(day, dict):
             continue
         story.append(Spacer(1, 6))
-        story.append(Paragraph(f"{_txt(day.get('day') or day.get('title') or f'День {idx}')} — "
-                               f"{_txt(day.get('focus') or day.get('topic'))}", styles["h2"]))
+        day_title = _txt(day.get("day") or day.get("title") or f"День {idx}")
+        day_focus = day.get("focus") or day.get("topic")
+        header_text = f"{day_title} — {_txt(day_focus)}" if day_focus else day_title
+        story.append(Paragraph(header_text, styles["h2"]))
 
         exercises = day.get("exercises") or []
         if isinstance(exercises, dict):
@@ -119,21 +136,22 @@ def generate_plan_pdf(payload: Dict[str, Any], api_result: Dict[str, Any]) -> by
             rows.append([
                 Paragraph(_txt(ex.get("name") or ex.get("exercise") or ex.get("title")), styles["cellb"]),
                 Paragraph(_txt(ex.get("sets")), styles["cell"]),
-                Paragraph(_txt(ex.get("reps") or ex.get("duration")), styles["cell"]),
-                Paragraph(_txt(ex.get("notes") or ex.get("instruction") or ex.get("description")), styles["cell"]),
+                Paragraph(_txt(ex.get("reps")), styles["cell"]),
+                Paragraph(_txt(ex.get("notes") or ex.get("tempo") or ex.get("description")), styles["cell"]),
             ])
 
-        table = Table(rows, colWidths=[55 * mm, 20 * mm, 25 * mm, 80 * mm], repeatRows=1)
-        table.setStyle(TableStyle([
+        t = Table(rows, colWidths=[55 * mm, 20 * mm, 25 * mm, 80 * mm])
+        t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#dddddd")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8f8fb"), colors.white]),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e2ec")),
         ]))
-        story.append(table)
+        story.append(t)
 
     doc.build(story)
     return buf.getvalue()
-

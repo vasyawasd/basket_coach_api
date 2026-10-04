@@ -40,20 +40,33 @@ def extract_and_parse_json(content: str) -> Dict[str, Any]:
     raise ValueError("Could not repair/extract valid JSON from response")
 
 
+def is_valid_plan_data(data: Any) -> bool:
+    """Verifies that the returned data is a genuine basketball training plan, not an error payload."""
+    if not isinstance(data, dict):
+        return False
+    if "error" in data:
+        return False
+    # Must contain either schedule or days or exercises
+    return any(k in data for k in ("schedule", "days", "weekly_schedule", "exercises"))
+
+
 def ping_model(client, model_name: str) -> bool:
     """
-    Sends an ultra-lightweight 1-token health probe (costs ~0 tokens, 5.0s timeout).
+    Sends an ultra-lightweight 1-token health probe (costs ~0 tokens, 8.0s timeout).
     Returns True only if the model is alive and returns 200 OK.
+    Supports reasoning models where initial output is in reasoning_content.
     """
     try:
         resp = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": "hi"}],
             max_tokens=2,
-            timeout=5.0,
+            timeout=8.0,
         )
-        content = resp.choices[0].message.content
-        return content is not None
+        msg = resp.choices[0].message
+        content = msg.content
+        reasoning = getattr(msg, "reasoning_content", None)
+        return bool(content is not None or reasoning is not None)
     except Exception as e:
         print(f"[LLM Probe] '{model_name}' unreachable ({type(e).__name__})", flush=True)
         return False
@@ -95,14 +108,12 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
             "gpt-5.5",              # 6. Deep basketball game-situation specialist (17.6s)
             "glm-5.2",              # 7. Comprehensive 19-exercise backup (16.3s)
         ]
-        all_models = set(budget_hierarchy) | set(premium_hierarchy)
+        base_hierarchy = budget_hierarchy if os.getenv("LLM_AUTO_STRATEGY", "premium") == "budget" else premium_hierarchy
 
         if selected_model and selected_model != "auto":
-            candidates = [selected_model] if selected_model in all_models else premium_hierarchy
-        elif os.getenv("LLM_AUTO_STRATEGY", "premium") == "budget":
-            candidates = budget_hierarchy
+            candidates = [selected_model] + [m for m in base_hierarchy if m != selected_model]
         else:
-            candidates = premium_hierarchy
+            candidates = base_hierarchy
 
         from openai import OpenAI
         import httpx
@@ -112,14 +123,14 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
             api_key=claudehub_key,
             base_url=base_url,
             max_retries=0,
-            timeout=httpx.Timeout(40.0, connect=6.0, read=40.0),
+            timeout=httpx.Timeout(45.0, connect=8.0, read=45.0),
         )
 
         for m_name in candidates:
             # 1. Send ultra-light 1-token probe
             print(f"[LLM Probe] Pinging '{m_name}' (1-token check, ~0 tokens burned)...", flush=True)
             if not ping_model(client, m_name):
-                print(f"[LLM Probe] '{m_name}' did not answer in 5.0s -> skipped (0 tokens spent on heavy prompt), cascading down...", flush=True)
+                print(f"[LLM Probe] '{m_name}' did not answer in 8.0s -> skipped (0 tokens spent on heavy prompt), cascading down...", flush=True)
                 continue
 
             # 2. Model answered! Send full generation prompt
@@ -136,6 +147,8 @@ def call_llm_api(system_prompt: str, user_prompt: str, context_text: str, select
                 content = response.choices[0].message.content
                 print(f"[LLM] ClaudeHub '{m_name}' SUCCEEDED ({len(content)} chars)", flush=True)
                 parsed_json = extract_and_parse_json(content)
+                if not is_valid_plan_data(parsed_json):
+                    raise ValueError(f"Model returned invalid plan payload or API error structure: {list(parsed_json.keys())}")
                 usage = getattr(response, "usage", None)
                 usage_info = {
                     "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,

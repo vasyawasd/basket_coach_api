@@ -180,8 +180,8 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
         token = secrets.token_urlsafe(32)
         token_hash = _hash_token(token)
 
-        # Cleanup expired sessions for this user
-        cur.execute("DELETE FROM sessions WHERE user_id = ? AND expires_at < ?", (user_id, now))
+        # Cleanup expired sessions across all users to prevent database bloating
+        cur.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
 
         cur.execute(
             "INSERT INTO sessions (token_hash, user_id, username, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
@@ -190,6 +190,15 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
         _prune_user_sessions(cur, user_id)
 
     return {"username": actual_username, "token": token}
+
+
+def prune_all_expired_sessions() -> int:
+    """Removes all expired sessions across all users to prevent DB bloat."""
+    now = time.time()
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
+        return cur.rowcount
 
 
 def logout_user(token: str) -> bool:

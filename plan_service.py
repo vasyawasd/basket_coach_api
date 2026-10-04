@@ -44,12 +44,15 @@ def validate_plan_params(params: Dict[str, Any]) -> Optional[str]:
         return "Некорректные параметры игрока."
 
     position = params.get("position", "")
-    if not isinstance(position, str) or len(position) > MAX_POSITION_LEN:
+    if not isinstance(position, str) or not position.strip() or len(position.strip()) > MAX_POSITION_LEN:
         return "Некорректная позиция игрока."
 
-    injuries = params.get("injuries") or "None"
-    if not isinstance(injuries, str) or len(injuries) > MAX_INJURIES_LEN:
-        return "Слишком длинное описание травм (максимум 500 символов)."
+    injuries = params.get("injuries")
+    if injuries is not None:
+        if not isinstance(injuries, str):
+            return "Некорректный формат описания травм."
+        if len(injuries) > MAX_INJURIES_LEN:
+            return "Слишком длинное описание травм (максимум 500 символов)."
 
     model = params.get("model") or "auto"
     if not isinstance(model, str) or len(model) > MAX_MODEL_LEN:
@@ -57,13 +60,13 @@ def validate_plan_params(params: Dict[str, Any]) -> Optional[str]:
 
     goal = params.get("goal", "")
     if isinstance(goal, list):
-        if not goal or not all(isinstance(g, str) for g in goal):
+        if not goal or not all(isinstance(g, str) and g.strip() for g in goal):
             return "Некорректно указаны цели тренировки."
-        if any(len(g) > MAX_GOAL_ITEM_LEN for g in goal):
+        if any(len(g.strip()) > MAX_GOAL_ITEM_LEN for g in goal):
             return "Слишком длинная цель тренировки (максимум 200 символов на цель)."
-        if sum(len(g) for g in goal) > MAX_GOAL_TOTAL_LEN:
+        if sum(len(g.strip()) for g in goal) > MAX_GOAL_TOTAL_LEN:
             return "Слишком много целей тренировки."
-    elif not isinstance(goal, str) or not (1 <= len(goal) <= MAX_GOAL_ITEM_LEN):
+    elif not isinstance(goal, str) or not (1 <= len(goal.strip()) <= MAX_GOAL_ITEM_LEN):
         return "Некорректно указана цель тренировки."
 
     feedback = params.get("feedback")

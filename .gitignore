@@ -41,4 +41,14 @@ Thumbs.db
 .claude/
 .claude-flow/
 .swarm/
+cloudflared.exe
+tunnel_manager.py
 
+# Loose PDFs in root directory (preserves knowledge_base/*.pdf)
+/*.pdf
+
+# Benchmarks & temporary profiling
+*bench*.json
+benchmarks/
+test_top_models.py
+test_server.log

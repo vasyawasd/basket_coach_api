@@ -23,8 +23,24 @@ CORS(
     ]}},
     supports_credentials=True,
     methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Poll-Token"]
+    allow_headers=["Authorization", "Content-Type", "X-Poll-Token", "X-Admin-Token"]
 )
+
+
+@app.errorhandler(400)
+@app.errorhandler(404)
+@app.errorhandler(405)
+@app.errorhandler(429)
+@app.errorhandler(500)
+def handle_http_error(e):
+    code = getattr(e, "code", 500)
+    desc = getattr(e, "description", "Internal Server Error")
+    return jsonify({"detail": desc, "status": "error"}), code
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    return jsonify({"detail": "Внутренняя ошибка сервера.", "status": "error"}), 500
 
 
 @app.after_request
@@ -56,12 +72,16 @@ def _client_ip() -> str:
     """
     Client IP for quotas/limits. X-Forwarded-For is honored only behind an
     explicitly trusted reverse proxy (TRUSTED_PROXY=1) to prevent spoofing.
+    Prioritizes direct proxy headers, falls back to the last untrusted hop in XFF.
     """
     remote = request.remote_addr or "unknown"
     if os.environ.get("TRUSTED_PROXY") == "1":
+        real_ip = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip.strip()
         xff = request.headers.get("X-Forwarded-For", "")
         if xff:
-            return xff.split(",")[0].strip()
+            return xff.split(",")[-1].strip()
     return remote
 
 

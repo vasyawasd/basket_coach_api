@@ -1,13 +1,22 @@
 import os
+import sys
 import json
 import re
 import time
 import pypdf
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 PDF_KB_DIR = os.path.join(BASE_DIR, "knowledge_base")
 MD_KB_DIR = os.path.join(BASE_DIR, "knowledge_base_md")
 MD_INDEX_PATH = os.path.join(BASE_DIR, "kb_md_index.json")
+LEGACY_INDEX_PATH = os.path.join(BASE_DIR, "kb_index.json")
 
 
 def sanitize_text(text: str) -> str:
@@ -33,7 +42,7 @@ def convert_all_pdfs_to_md():
     total_md_chars = 0
     md_index = []
 
-    pdf_files = [f for f in os.listdir(PDF_KB_DIR) if f.endswith(".pdf")]
+    pdf_files = sorted([f for f in os.listdir(PDF_KB_DIR) if f.endswith(".pdf")])
     print(f"Found {len(pdf_files)} PDF books in knowledge_base/\n")
 
     for idx, pdf_name in enumerate(pdf_files, 1):
@@ -46,7 +55,7 @@ def convert_all_pdfs_to_md():
 
         try:
             reader = pypdf.PdfReader(pdf_path)
-            book_md_lines = [f"# 📖 {book_title}\n"]
+            book_md_lines = [f"# {book_title}\n"]
             book_pages_count = 0
 
             for page_num, page in enumerate(reader.pages, 1):
@@ -79,9 +88,13 @@ def convert_all_pdfs_to_md():
             print(f"   -> ERROR converting {pdf_name}: {e}")
 
     # Save compiled JSON Markdown Index for lightning-fast RAG searching
-    print("\nSaving compiled Markdown Index to kb_md_index.json...")
+    print("\nSaving compiled Markdown Index to kb_md_index.json and kb_index.json...")
     with open(MD_INDEX_PATH, "w", encoding="utf-8") as f_out:
         json.dump(md_index, f_out, ensure_ascii=False)
+
+    # Sync legacy index as well to guarantee 16 books in fallback
+    with open(LEGACY_INDEX_PATH, "w", encoding="utf-8") as f_leg:
+        json.dump(md_index, f_leg, ensure_ascii=False)
 
     duration = time.time() - start_time
     token_savings_pct = (1 - (total_md_chars / max(total_raw_chars, 1))) * 100
@@ -91,7 +104,7 @@ def convert_all_pdfs_to_md():
     print("=" * 60)
     print(f"Total Pages Processed: {total_pages}")
     print(f"Markdown Files Created: {len(pdf_files)} files in knowledge_base_md/")
-    print(f"Index Saved: kb_md_index.json ({len(md_index)} page entries)")
+    print(f"Index Saved: kb_md_index.json & kb_index.json ({len(md_index)} page entries)")
     print(f"Execution Time: {duration:.2f} seconds")
     print(f"Estimated Token Cleanup / Compression: {token_savings_pct:.1f}% reduction")
     print("=" * 60)
@@ -99,4 +112,3 @@ def convert_all_pdfs_to_md():
 
 if __name__ == "__main__":
     convert_all_pdfs_to_md()
-
